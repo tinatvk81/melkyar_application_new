@@ -1,0 +1,48 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.eggs/
+
+# --- محیط مجازی (venv خصوصی سرور و کلاینت) ---
+venv/
+env/
+ENV/
+.venv/
+
+# --- رمزها و تنظیمات حساس — هرگز نباید در گیت باشند ---
+.env
+*.env.local
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+
+# --- سیستم‌عامل ---
+.DS_Store
+Thumbs.db
+
+# --- عکس‌های واقعی فایل‌های ملکی — این‌ها داده‌ی کاربر هستند، نه کد ---
+# پوشه نگه داشته می‌شود (به‌خاطر .gitkeep) ولی محتوایش وارد گیت نمی‌شود
+server/media/*
+!server/media/.gitkeep
+
+# --- نصب‌کننده‌های exe — فایل باینری حجیم، جای مناسبش گیت نیست ---
+server/static_installers/*
+!server/static_installers/.gitkeep
+
+# --- خروجی ساخت PyInstaller ---
+client/build/
+client/dist/
+*.spec
+
+# --- لاگ‌ها ---
+*.log
+
+# --- خروجی pytest / coverage (برای آینده) ---
+.pytest_cache/
+htmlcov/
+.coverage
