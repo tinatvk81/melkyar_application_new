@@ -33,6 +33,13 @@ class Property(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
+    # --- قفل هم‌زمان (Optimistic Locking) ---
+    # با هر ویرایش موفق +۱ می‌شود. کلاینت باید همان نسخه‌ای که خوانده را در
+    # درخواست ویرایش بفرستد؛ اگر با نسخه‌ی فعلی دیتابیس فرق داشت (یعنی شخص
+    # دیگری بین‌این‌حین فایل را عوض کرده)، سرور با خطای ۴۰۹ رد می‌کند به‌جای
+    # این‌که بی‌صدا تغییرات آن شخص دیگر را رونویسی کند.
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
     # --- مالکیت فایل (برای فیلتر دسترسی مشاور) ---
     owner_agent_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
 

@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     SERVER_BIND_HOST: str = "0.0.0.0"
     SERVER_PORT: int = 8000
 
+    # --- محیط اجرا ---
+    # وقتی False است (پیش‌فرض و توصیه‌شده برای محیط عملیاتی)، مستندات خودکار
+    # API یعنی /docs و /redoc و /openapi.json کاملاً غیرفعال می‌شوند — چون
+    # این‌ها ساختار کامل API (اسم هر endpoint، فیلدهای هر مدل) را بدون نیاز به
+    # هیچ لاگینی روی شبکه‌ی دفتر در معرض دید می‌گذارند. برای توسعه‌ی محلی،
+    # DEBUG=true را در فایل .env بگذارید تا دوباره در دسترس باشند.
+    DEBUG: bool = False
+
     # --- نسخه‌ی برنامه (برای مکانیزم آپدیت خودکار کلاینت‌ها) ---
     APP_VERSION: str = "1.0.0"
     INSTALLER_FILENAME: str = "RealEstateApp-Setup-1.0.0.exe"

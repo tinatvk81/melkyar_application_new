@@ -6,6 +6,7 @@ from app.core.security import hash_password
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserRead, PasswordReset
+from app.services.activity_log_service import log_activity
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -16,7 +17,7 @@ def list_users(db: Session = Depends(get_db), _admin: User = Depends(require_adm
 
 
 @router.post("/", response_model=UserRead)
-def create_agent(data: UserCreate, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+def create_agent(data: UserCreate, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     if db.query(User).filter(User.username == data.username).first():
         raise HTTPException(status_code=400, detail="این نام کاربری قبلاً استفاده شده است")
     user = User(
@@ -28,11 +29,12 @@ def create_agent(data: UserCreate, db: Session = Depends(get_db), _admin: User =
     db.add(user)
     db.commit()
     db.refresh(user)
+    log_activity(db, admin.id, "create", "user", user.id, detail=f"{user.username} ({user.role.value})")
     return user
 
 
 @router.post("/{user_id}/deactivate", response_model=UserRead)
-def deactivate_user(user_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+def deactivate_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="کاربر پیدا نشد")
@@ -40,23 +42,25 @@ def deactivate_user(user_id: int, db: Session = Depends(get_db), _admin: User = 
     user.token_version += 1  # هر توکن باز فعلی این کاربر فوراً باطل می‌شود
     db.commit()
     db.refresh(user)
+    log_activity(db, admin.id, "deactivate", "user", user.id, detail=user.username)
     return user
 
 
 @router.post("/{user_id}/activate", response_model=UserRead)
-def activate_user(user_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+def activate_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="کاربر پیدا نشد")
     user.is_active = True
     db.commit()
     db.refresh(user)
+    log_activity(db, admin.id, "activate", "user", user.id, detail=user.username)
     return user
 
 
 @router.post("/{user_id}/reset-password", response_model=UserRead)
 def reset_password(
-    user_id: int, data: PasswordReset, db: Session = Depends(get_db), _admin: User = Depends(require_admin)
+    user_id: int, data: PasswordReset, db: Session = Depends(get_db), admin: User = Depends(require_admin)
 ):
     user = db.get(User, user_id)
     if not user:
@@ -65,4 +69,5 @@ def reset_password(
     user.token_version += 1  # نشست‌های فعال قبلی با این کار باطل می‌شوند
     db.commit()
     db.refresh(user)
+    log_activity(db, admin.id, "reset_password", "user", user.id, detail=user.username)
     return user

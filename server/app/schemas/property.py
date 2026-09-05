@@ -24,10 +24,14 @@ class PropertyCreate(BaseModel):
 
 class PropertyUpdate(PropertyCreate):
     status: Optional[PropertyStatus] = None
+    # قفل هم‌زمان: کلاینت باید نسخه‌ای که خوانده را برگرداند تا سرور بتواند
+    # تشخیص دهد آیا از آخرین باری که این فایل را دید، شخص دیگری تغییرش داده یا نه.
+    version: int
 
 
 class PropertyRead(BaseModel):
     id: int
+    version: int
     owner_agent_id: int
     deal_type: DealType
     status: PropertyStatus

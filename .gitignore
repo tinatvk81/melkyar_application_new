@@ -34,6 +34,10 @@ server/media/*
 server/static_installers/*
 !server/static_installers/.gitkeep
 
+# --- فایل‌های لاگ سرور — داده‌ی زمان اجرا هستند، نه کد ---
+server/logs/*
+!server/logs/.gitkeep
+
 # --- خروجی ساخت PyInstaller ---
 client/build/
 client/dist/

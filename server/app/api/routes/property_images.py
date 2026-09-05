@@ -11,6 +11,7 @@ from app.services.property_access import get_accessible_property
 from app.services.image_storage import (
     save_image_file, get_image_path, delete_image_file, ALLOWED_CONTENT_TYPES
 )
+from app.services.activity_log_service import log_activity
 
 router = APIRouter(prefix="/properties/{property_id}/images", tags=["property-images"])
 
@@ -76,6 +77,10 @@ async def upload_images(
         created.append(image)
 
     db.commit()
+    log_activity(
+        db, current_user.id, "upload_image", "property", property_id,
+        detail=f"{len(created)} عکس اضافه شد",
+    )
     return {"created": len(created)}
 
 
@@ -119,7 +124,9 @@ def delete_image(
     if not image:
         raise HTTPException(status_code=404, detail="عکس پیدا نشد")
 
+    original_filename = image.original_filename
     delete_image_file(property_id, image.stored_filename)
     db.delete(image)
     db.commit()
+    log_activity(db, current_user.id, "delete_image", "property", property_id, detail=original_filename)
     return {"ok": True}

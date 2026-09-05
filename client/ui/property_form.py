@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from api_client import api_client, ApiError
+from session import handle_api_error
 from ui.jalali_date_edit import JalaliDateEdit
 from ui.property_gallery_dialog import PropertyGalleryDialog
 
@@ -263,11 +264,25 @@ class PropertyFormDialog(QDialog):
 
         try:
             if self.property_data:
+                payload["version"] = self.property_data["version"]
                 api_client.update_property(self.property_data["id"], payload)
             else:
                 api_client.create_property(payload)
         except ApiError as e:
-            QMessageBox.critical(self, "خطا در ذخیره‌سازی", str(e))
+            if e.status_code == 409:
+                # قفل هم‌زمان: شخص دیگری بین‌این‌حین این فایل را تغییر داده است.
+                # به‌جای رونویسی بی‌صدا، به کاربر اطلاع می‌دهیم که باید فایل را
+                # دوباره باز کند (این دیالوگ بسته می‌شود تا فهرست دوباره تازه شود).
+                QMessageBox.warning(
+                    self, "تغییر هم‌زمان",
+                    "این فایل توسط شخص دیگری تغییر کرده است.\n"
+                    "برای جلوگیری از رونویسی تغییرات او، لطفاً این پنجره را ببندید "
+                    "و فایل را دوباره باز کنید تا آخرین نسخه را ببینید.",
+                )
+                self.on_saved()  # فهرست پشت این پنجره را تازه کن تا نسخه‌ی جدید در دسترس باشد
+                self.reject()
+                return
+            handle_api_error(self, e, "خطا در ذخیره‌سازی", critical=True)
             return
 
         QMessageBox.information(self, "موفق", "فایل با موفقیت ذخیره شد.")

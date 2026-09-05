@@ -3,8 +3,10 @@ from datetime import date
 
 import jdatetime
 import pandas as pd
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-from app.models.property import Property, DealType
+from app.models.property import Property, DealType, PropertyStatus
 from app.services.excel_schema import COMMON_COLUMNS, DEAL_SHEETS
 
 BOOL_TRUE_VALUES = {"بله", "yes", "true", "1"}
@@ -50,18 +52,64 @@ def _parse_common_fields(row: pd.Series) -> dict:
     return result
 
 
-def import_workbook(file_bytes: bytes, owner_agent_id: int) -> tuple[list[Property], list[dict]]:
+def _normalize(text) -> str:
+    return " ".join(str(text).strip().lower().split()) if text else ""
+
+
+def _duplicate_signature(city: str, address: str, owner_phone: str) -> tuple | None:
     """
-    خروجی: (لیست آبجکت‌های Property آماده برای ثبت, لیست خطاهای ردیف‌به‌ردیف)
-    هر خطا: {"sheet": ..., "row": شماره ردیف در اکسل (شامل هدر), "message": ...}
+    امضای تشخیص تکراری بودن یک فایل: شهر + آدرس + تلفن مالک (نرمال‌شده، بدون
+    حساسیت به فاصله‌ی اضافی یا بزرگی/کوچکی حروف). اگر آدرس و تلفن هردو خالی
+    باشند، اطلاعات کافی برای تشخیص تکراری بودن نداریم و بی‌خیال این بررسی
+    می‌شویم (بهتر از رد کردن اشتباهیِ یک فایل واقعی).
+    """
+    norm_address = _normalize(address)
+    norm_phone = _normalize(owner_phone)
+    if not norm_address and not norm_phone:
+        return None
+    return (_normalize(city), norm_address, norm_phone)
+
+
+def _find_existing_duplicate(db: Session, owner_agent_id: int, deal_type: str, signature: tuple):
+    city, address, owner_phone = signature
+    q = db.query(Property).filter(
+        Property.owner_agent_id == owner_agent_id,
+        Property.deal_type == DealType(deal_type),
+        Property.status == PropertyStatus.active,
+        func.lower(Property.city) == city,
+    )
+    if address:
+        q = q.filter(func.lower(func.trim(Property.address)) == address)
+    if owner_phone:
+        q = q.filter(func.lower(func.trim(Property.owner_phone)) == owner_phone)
+    return q.first()
+
+
+def import_workbook(
+    file_bytes: bytes, owner_agent_id: int, db: Session
+) -> tuple[list[Property], list[dict], list[dict]]:
+    """
+    خروجی: (لیست آبجکت‌های Property آماده برای ثبت, لیست خطاهای ردیف‌به‌ردیف, لیست ردیف‌های تکراری نادیده‌گرفته‌شده)
+    هر خطا/تکراری: {"sheet": ..., "row": شماره ردیف در اکسل (شامل هدر), "message": ...}
+
+    تشخیص تکراری در دو سطح انجام می‌شود:
+    ۱. در برابر فایل‌های از‌قبل‌موجود در دیتابیس (همان مشاور، همان نوع معامله، همان شهر/آدرس/تلفن)
+    ۲. در برابر ردیف‌های دیگر همین فایل اکسل (اگر خودِ فایل اکسل تکرار داشته باشد)
     """
     try:
-        sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None, engine="openpyxl")
+        # نکته‌ی مهم (باگ واقعی که در تست پیدا شد): بدون dtype=str، اگر ستونی
+        # مثل «تلفن مالک» فقط شامل مقادیر عددی‌شکل باشد، pandas آن را به‌طور
+        # خودکار به نوع عددی تبدیل می‌کند و صفر ابتدایی شماره تلفن‌های ایرانی
+        # (مثل 09121112233) را حذف می‌کند — که هم داده را خراب می‌کند و هم
+        # باعث می‌شود تشخیص تکراری بر اساس تلفن درست کار نکند.
+        sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None, engine="openpyxl", dtype=str)
     except Exception as e:
         raise ValueError(f"فایل اکسل قابل خواندن نیست: {e}")
 
     new_properties: list[Property] = []
     errors: list[dict] = []
+    duplicates: list[dict] = []
+    seen_in_this_file: set = set()
 
     for deal_type, config in DEAL_SHEETS.items():
         sheet_name = config["sheet_name"]
@@ -73,6 +121,24 @@ def import_workbook(file_bytes: bytes, owner_agent_id: int) -> tuple[list[Proper
             excel_row_number = i + 2  # ردیف ۱ هدر است، pandas از صفر می‌شمارد
             try:
                 common = _parse_common_fields(row)
+
+                signature = _duplicate_signature(common["city"], common.get("address"), common.get("owner_phone"))
+                if signature is not None:
+                    if signature in seen_in_this_file:
+                        duplicates.append({
+                            "sheet": sheet_name, "row": excel_row_number,
+                            "message": "این ردیف با ردیف دیگری در همین فایل اکسل تکراری به‌نظر می‌رسد (آدرس/تلفن یکسان)",
+                        })
+                        continue
+                    existing = _find_existing_duplicate(db, owner_agent_id, deal_type, signature)
+                    if existing is not None:
+                        duplicates.append({
+                            "sheet": sheet_name, "row": excel_row_number,
+                            "message": f"احتمالاً تکراری است — فایل مشابه از قبل با شناسه‌ی #{existing.id} ثبت شده",
+                        })
+                        continue
+                    seen_in_this_file.add(signature)
+
                 details = {}
                 contract_end_date = None
                 for field in config["fields"]:
@@ -101,4 +167,4 @@ def import_workbook(file_bytes: bytes, owner_agent_id: int) -> tuple[list[Proper
             except Exception as e:
                 errors.append({"sheet": sheet_name, "row": excel_row_number, "message": str(e)})
 
-    return new_properties, errors
+    return new_properties, errors, duplicates

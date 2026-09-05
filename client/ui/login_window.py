@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
 )
 
 from api_client import api_client, ApiError
+from ui.connection_settings_dialog import ConnectionSettingsDialog
 
 
 class LoginWindow(QWidget):
@@ -12,7 +13,7 @@ class LoginWindow(QWidget):
         self.on_success = on_success
         self.setWindowTitle("ورود به سامانه‌ی مدیریت فایل‌های ملکی")
         self.setLayoutDirection(Qt.RightToLeft)
-        self.resize(380, 220)
+        self.resize(380, 260)
 
         self.username_input = QLineEdit()
         self.username_input.setAlignment(Qt.AlignRight)
@@ -28,6 +29,9 @@ class LoginWindow(QWidget):
         login_btn = QPushButton("ورود")
         login_btn.clicked.connect(self.handle_login)
 
+        settings_btn = QPushButton("تنظیمات اتصال")
+        settings_btn.clicked.connect(self.handle_open_settings)
+
         title = QLabel("سامانه‌ی مدیریت فایل‌های ملکی")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px;")
@@ -36,7 +40,12 @@ class LoginWindow(QWidget):
         layout.addWidget(title)
         layout.addLayout(form)
         layout.addWidget(login_btn)
+        layout.addWidget(settings_btn)
         self.setLayout(layout)
+
+    def handle_open_settings(self):
+        dialog = ConnectionSettingsDialog()
+        dialog.exec()
 
     def handle_login(self):
         username = self.username_input.text().strip()
@@ -52,7 +61,7 @@ class LoginWindow(QWidget):
         except Exception:
             QMessageBox.critical(
                 self, "خطای اتصال",
-                "اتصال به سرور برقرار نشد. آدرس سرور در config.py و اتصال شبکه را بررسی کنید."
+                "اتصال به سرور برقرار نشد. آدرس سرور را از دکمه‌ی «تنظیمات اتصال» بررسی کنید."
             )
             return
 

@@ -2,14 +2,16 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
-    QFileDialog
+    QFileDialog, QComboBox
 )
 
 from api_client import api_client, ApiError
+from session import handle_api_error
 from ui.property_form import PropertyFormDialog, DEAL_TYPE_LABELS
 from ui.import_excel_dialog import ImportExcelDialog
 from ui.user_form_dialog import UserFormDialog, ROLE_LABELS
 from ui.property_filter_panel import PropertyFilterPanel
+from ui.archive_dialog import ArchivePropertiesDialog
 
 
 class PropertyListTab(QWidget):
@@ -52,6 +54,9 @@ class PropertyListTab(QWidget):
         export_excel_btn = QPushButton("خروجی اکسل")
         export_excel_btn.clicked.connect(self.handle_export_excel)
 
+        archive_btn = QPushButton("آرشیو فایل‌های غیرفعال")
+        archive_btn.clicked.connect(self.handle_open_archive)
+
         refresh_btn = QPushButton("به‌روزرسانی فهرست")
         refresh_btn.clicked.connect(self.load_properties)
 
@@ -62,6 +67,7 @@ class PropertyListTab(QWidget):
         top_bar.addWidget(import_btn)
         top_bar.addWidget(export_pdf_btn)
         top_bar.addWidget(export_excel_btn)
+        top_bar.addWidget(archive_btn)
         top_bar.addStretch()
         top_bar.addWidget(refresh_btn)
 
@@ -113,7 +119,7 @@ class PropertyListTab(QWidget):
         try:
             response = api_client.list_properties(page=self._current_page, **self._current_filters)
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
 
         properties = response["items"]
@@ -172,7 +178,7 @@ class PropertyListTab(QWidget):
         try:
             api_client.deactivate_property(prop["id"])
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         self.load_properties()
 
@@ -187,7 +193,7 @@ class PropertyListTab(QWidget):
         try:
             api_client.export_properties_pdf(save_path, **self._current_filters)
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         QMessageBox.information(self, "موفق", f"فایل PDF ذخیره شد:\n{save_path}")
 
@@ -200,9 +206,13 @@ class PropertyListTab(QWidget):
         try:
             api_client.export_properties_excel(save_path, **self._current_filters)
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         QMessageBox.information(self, "موفق", f"فایل اکسل ذخیره شد:\n{save_path}")
+
+    def handle_open_archive(self):
+        dialog = ArchivePropertiesDialog(on_restored=self.load_properties)
+        dialog.exec()
 
 
 class RenewalsTab(QWidget):
@@ -228,7 +238,7 @@ class RenewalsTab(QWidget):
         try:
             items = api_client.upcoming_renewals(days=30)
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         self.table.setRowCount(len(items))
         for row, p in enumerate(items):
@@ -283,7 +293,7 @@ class UserManagementTab(QWidget):
         try:
             users = api_client.list_users()
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         self._users_by_row = users
         self.table.setRowCount(len(users))
@@ -331,7 +341,7 @@ class UserManagementTab(QWidget):
         try:
             action(user["id"])
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         self.load_users()
 
@@ -353,7 +363,7 @@ class UserManagementTab(QWidget):
         try:
             api_client.reset_user_password(user["id"], new_password)
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         QMessageBox.information(
             self, "موفق",
@@ -396,7 +406,7 @@ class AgentPerformanceTab(QWidget):
         try:
             agents = api_client.get_agent_performance()
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
 
         self.table.setRowCount(len(agents))
@@ -419,9 +429,117 @@ class AgentPerformanceTab(QWidget):
         try:
             api_client.export_agent_performance_pdf(save_path)
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         QMessageBox.information(self, "موفق", f"گزارش ذخیره شد:\n{save_path}")
+
+
+class ActivityLogTab(QWidget):
+    """فقط برای مدیر: تاریخچه‌ی کامل عملیات (چه کسی، چه زمانی، چه کاری)."""
+
+    ENTITY_TYPE_LABELS = {"": "همه", "property": "فایل ملکی", "user": "کاربر"}
+    ACTION_LABELS = {
+        "create": "ثبت", "update": "ویرایش", "deactivate": "غیرفعال‌سازی", "activate": "فعال‌سازی",
+        "reactivate": "بازگردانی", "reset_password": "ریست رمز", "login": "ورود",
+        "import_excel": "ایمپورت اکسل", "upload_image": "آپلود عکس", "delete_image": "حذف عکس",
+    }
+
+    def __init__(self):
+        super().__init__()
+        self.setLayoutDirection(Qt.RightToLeft)
+        self._current_page = 1
+        self._total_pages = 1
+
+        self.entity_filter_combo = QComboBox()
+        for value, label in self.ENTITY_TYPE_LABELS.items():
+            self.entity_filter_combo.addItem(label, value)
+        self.entity_filter_combo.currentIndexChanged.connect(self._handle_filter_changed)
+
+        self.days_filter_combo = QComboBox()
+        for value, label in [(7, "۷ روز اخیر"), (30, "۳۰ روز اخیر"), (90, "۹۰ روز اخیر"), (0, "همه‌ی تاریخچه")]:
+            self.days_filter_combo.addItem(label, value)
+        self.days_filter_combo.setCurrentIndex(1)  # پیش‌فرض: ۳۰ روز اخیر
+        self.days_filter_combo.currentIndexChanged.connect(self._handle_filter_changed)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["زمان", "کاربر", "عملیات", "نوع", "جزئیات"])
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+
+        refresh_btn = QPushButton("به‌روزرسانی")
+        refresh_btn.clicked.connect(self.load_logs)
+
+        filter_bar = QHBoxLayout()
+        filter_bar.addWidget(QLabel("نوع:"))
+        filter_bar.addWidget(self.entity_filter_combo)
+        filter_bar.addWidget(QLabel("بازه:"))
+        filter_bar.addWidget(self.days_filter_combo)
+        filter_bar.addStretch()
+        filter_bar.addWidget(refresh_btn)
+
+        self.prev_btn = QPushButton("◀ صفحه‌ی قبل")
+        self.prev_btn.clicked.connect(self.handle_prev_page)
+        self.next_btn = QPushButton("صفحه‌ی بعد ▶")
+        self.next_btn.clicked.connect(self.handle_next_page)
+        self.status_label = QLabel("")
+        self.status_label.setAlignment(Qt.AlignCenter)
+
+        pagination_bar = QHBoxLayout()
+        pagination_bar.addWidget(self.prev_btn)
+        pagination_bar.addStretch()
+        pagination_bar.addWidget(self.status_label)
+        pagination_bar.addStretch()
+        pagination_bar.addWidget(self.next_btn)
+
+        layout = QVBoxLayout()
+        layout.addLayout(filter_bar)
+        layout.addWidget(self.table)
+        layout.addLayout(pagination_bar)
+        self.setLayout(layout)
+
+        self.load_logs()
+
+    def _handle_filter_changed(self):
+        self._current_page = 1
+        self.load_logs()
+
+    def load_logs(self):
+        try:
+            response = api_client.list_activity_logs(
+                page=self._current_page,
+                entity_type=self.entity_filter_combo.currentData() or None,
+                days=self.days_filter_combo.currentData(),
+            )
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            return
+
+        logs = response["items"]
+        self._total_pages = response["total_pages"]
+
+        self.table.setRowCount(len(logs))
+        for row, log in enumerate(logs):
+            self.table.setItem(row, 0, QTableWidgetItem(log["created_at"].replace("T", " ")[:19]))
+            self.table.setItem(row, 1, QTableWidgetItem(log.get("user_full_name") or log.get("username") or ""))
+            self.table.setItem(row, 2, QTableWidgetItem(self.ACTION_LABELS.get(log["action"], log["action"])))
+            self.table.setItem(row, 3, QTableWidgetItem(self.ENTITY_TYPE_LABELS.get(log["entity_type"], log["entity_type"])))
+            self.table.setItem(row, 4, QTableWidgetItem(log.get("detail") or ""))
+
+        self.status_label.setText(
+            f"صفحه {self._current_page} از {self._total_pages} — تعداد کل: {response['total']}"
+        )
+        self.prev_btn.setEnabled(self._current_page > 1)
+        self.next_btn.setEnabled(self._current_page < self._total_pages)
+
+    def handle_prev_page(self):
+        if self._current_page > 1:
+            self._current_page -= 1
+            self.load_logs()
+
+    def handle_next_page(self):
+        if self._current_page < self._total_pages:
+            self._current_page += 1
+            self.load_logs()
 
 
 class MainWindow(QMainWindow):
@@ -433,10 +551,16 @@ class MainWindow(QMainWindow):
 
         tabs = QTabWidget()
         tabs.addTab(PropertyListTab(), "فهرست فایل‌ها")
+        self._renewals_tab_index = tabs.count()
         tabs.addTab(RenewalsTab(), "قراردادهای رو‌به‌اتمام")
 
         if api_client.role == "admin":
             tabs.addTab(AgentPerformanceTab(), "گزارش عملکرد مشاوران")
             tabs.addTab(UserManagementTab(), "مدیریت کاربران")
+            tabs.addTab(ActivityLogTab(), "تاریخچه‌ی فعالیت‌ها")
 
+        self.tabs = tabs
         self.setCentralWidget(tabs)
+
+    def switch_to_renewals_tab(self):
+        self.tabs.setCurrentIndex(self._renewals_tab_index)

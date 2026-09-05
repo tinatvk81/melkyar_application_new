@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_admin
-from app.api.routes.properties import _base_query, apply_filters
+from app.api.routes.properties import _base_query, apply_filters, _build_order_clause
 from app.db.session import get_db
 from app.models.property import Property, PropertyStatus
 from app.models.user import User, UserRole
@@ -19,15 +19,17 @@ from app.services.pdf_export import build_properties_pdf, build_agent_performanc
 router = APIRouter(tags=["reports"])
 
 
-def _accessible_properties(db: Session, current_user: User, **filters):
+def _accessible_properties(db: Session, current_user: User, sort_by=None, sort_order=None, **filters):
     """
     از همان تابع apply_filters که در properties.py برای فهرست اصلی استفاده می‌شود
     این‌جا هم استفاده می‌شود — تا خروجی PDF/اکسل دقیقاً همان چیزی باشد که کاربر
     با فیلترهایش روی صفحه می‌بیند، نه یک منطق جدا که ممکن است با آن ناهماهنگ شود.
+    مرتب‌سازی هم به همین دلیل با همان منطق فهرست اصلی هماهنگ شده است.
     """
     q = _base_query(db, current_user)
     q = apply_filters(q, **filters)
-    return q.order_by(Property.created_at.desc()).all()
+    order_clause = _build_order_clause(sort_by, sort_order)
+    return q.order_by(order_clause).all()
 
 
 @router.get("/properties/export/pdf")
@@ -42,13 +44,17 @@ def export_properties_pdf(
     has_parking: Optional[bool] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
+    search: Optional[str] = None,
+    sort_by: Optional[str] = "created_at",
+    sort_order: Optional[str] = "desc",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     properties = _accessible_properties(
-        db, current_user, city=city, district=district, deal_type=deal_type, min_area=min_area,
+        db, current_user, sort_by=sort_by, sort_order=sort_order,
+        city=city, district=district, deal_type=deal_type, min_area=min_area,
         max_area=max_area, min_rooms=min_rooms, has_elevator=has_elevator, has_parking=has_parking,
-        min_price=min_price, max_price=max_price,
+        min_price=min_price, max_price=max_price, search=search,
     )
     data = [PropertyRead.model_validate(p).model_dump(mode="json") for p in properties]
     pdf_bytes = build_properties_pdf(data)
@@ -71,13 +77,17 @@ def export_properties_excel(
     has_parking: Optional[bool] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
+    search: Optional[str] = None,
+    sort_by: Optional[str] = "created_at",
+    sort_order: Optional[str] = "desc",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     properties = _accessible_properties(
-        db, current_user, city=city, district=district, deal_type=deal_type, min_area=min_area,
+        db, current_user, sort_by=sort_by, sort_order=sort_order,
+        city=city, district=district, deal_type=deal_type, min_area=min_area,
         max_area=max_area, min_rooms=min_rooms, has_elevator=has_elevator, has_parking=has_parking,
-        min_price=min_price, max_price=max_price,
+        min_price=min_price, max_price=max_price, search=search,
     )
     data = [PropertyRead.model_validate(p).model_dump(mode="json") for p in properties]
     excel_bytes = build_properties_excel(data)

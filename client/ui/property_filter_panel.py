@@ -1,6 +1,6 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QGridLayout, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox,
     QPushButton, QLabel, QMessageBox
 )
 
@@ -24,6 +24,10 @@ class PropertyFilterPanel(QWidget):
 
         self.city_input = QLineEdit()
         self.district_input = QLineEdit()
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("جستجو در آدرس، توضیحات، نام یا تلفن مالک...")
+        self.search_input.returnPressed.connect(self._handle_apply)
 
         self.deal_type_combo = QComboBox()
         self.deal_type_combo.addItem("همه", "")
@@ -53,6 +57,19 @@ class PropertyFilterPanel(QWidget):
         self.min_price_input.setPlaceholderText("حداقل مبلغ (تومان)")
         self.max_price_input = MoneyLineEdit()
         self.max_price_input.setPlaceholderText("حداکثر مبلغ (تومان)")
+
+        self.sort_by_combo = QComboBox()
+        for value, label in [
+            ("created_at", "تاریخ ثبت"), ("price", "قیمت"), ("area_m2", "متراژ"),
+            ("contract_end_date", "تاریخ پایان قرارداد"),
+        ]:
+            self.sort_by_combo.addItem(label, value)
+
+        self.sort_order_combo = QComboBox()
+        self.sort_order_combo.addItem("نزولی", "desc")
+        self.sort_order_combo.addItem("صعودی", "asc")
+        self.sort_by_combo.currentIndexChanged.connect(self._handle_apply)
+        self.sort_order_combo.currentIndexChanged.connect(self._handle_apply)
 
         apply_btn = QPushButton("اعمال فیلتر")
         apply_btn.clicked.connect(self._handle_apply)
@@ -86,7 +103,18 @@ class PropertyFilterPanel(QWidget):
         grid.addWidget(apply_btn, 3, 4)
         grid.addWidget(clear_btn, 3, 5)
 
-        self.setLayout(grid)
+        grid.addWidget(QLabel("مرتب‌سازی بر اساس:"), 4, 0)
+        grid.addWidget(self.sort_by_combo, 4, 1)
+        grid.addWidget(self.sort_order_combo, 4, 2)
+
+        search_row = QHBoxLayout()
+        search_row.addWidget(QLabel("جستجوی آزاد:"))
+        search_row.addWidget(self.search_input)
+
+        outer = QVBoxLayout()
+        outer.addLayout(search_row)
+        outer.addLayout(grid)
+        self.setLayout(outer)
 
     def _handle_apply(self):
         try:
@@ -99,6 +127,7 @@ class PropertyFilterPanel(QWidget):
     def _handle_clear(self):
         self.city_input.clear()
         self.district_input.clear()
+        self.search_input.clear()
         self.deal_type_combo.setCurrentIndex(0)
         self.min_area_input.setValue(0)
         self.max_area_input.setValue(0)
@@ -107,6 +136,14 @@ class PropertyFilterPanel(QWidget):
         self.parking_combo.setCurrentIndex(0)
         self.min_price_input.clear()
         self.max_price_input.clear()
+        # جلوگیری از دو بار فراخوانی on_clear/on_apply: چون تغییر این دو کمبو به
+        # _handle_apply وصل است، سیگنالشان را موقتاً خاموش می‌کنیم.
+        self.sort_by_combo.blockSignals(True)
+        self.sort_order_combo.blockSignals(True)
+        self.sort_by_combo.setCurrentIndex(0)
+        self.sort_order_combo.setCurrentIndex(0)
+        self.sort_by_combo.blockSignals(False)
+        self.sort_order_combo.blockSignals(False)
         self.on_clear()
 
     def get_filters(self) -> dict:
@@ -117,6 +154,8 @@ class PropertyFilterPanel(QWidget):
             filters["city"] = self.city_input.text().strip()
         if self.district_input.text().strip():
             filters["district"] = self.district_input.text().strip()
+        if self.search_input.text().strip():
+            filters["search"] = self.search_input.text().strip()
         if self.deal_type_combo.currentData():
             filters["deal_type"] = self.deal_type_combo.currentData()
         if self.min_area_input.value() > 0:
@@ -136,5 +175,8 @@ class PropertyFilterPanel(QWidget):
         max_price = self.max_price_input.value()
         if max_price is not None:
             filters["max_price"] = max_price
+
+        filters["sort_by"] = self.sort_by_combo.currentData()
+        filters["sort_order"] = self.sort_order_combo.currentData()
 
         return filters

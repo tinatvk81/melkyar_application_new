@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 
 from api_client import api_client, ApiError
+from session import handle_api_error
 
 
 class ImportExcelDialog(QDialog):
@@ -67,7 +68,7 @@ class ImportExcelDialog(QDialog):
         try:
             api_client.download_import_template(save_path)
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         QMessageBox.information(self, "موفق", f"قالب نمونه ذخیره شد:\n{save_path}")
 
@@ -85,15 +86,22 @@ class ImportExcelDialog(QDialog):
         try:
             result = api_client.import_excel(self.selected_file_path)
         except ApiError as e:
-            QMessageBox.critical(self, "خطا در Import", str(e))
+            handle_api_error(self, e, "خطا در Import", critical=True)
             return
         except Exception:
             QMessageBox.critical(self, "خطا", "خطا در ارسال فایل به سرور. اتصال شبکه را بررسی کنید.")
             return
 
-        lines = [f"تعداد فایل‌های ثبت‌شده: {result['created']}", f"تعداد ردیف‌های دارای خطا: {result['error_count']}", ""]
+        lines = [
+            f"تعداد فایل‌های ثبت‌شده: {result['created']}",
+            f"تعداد ردیف‌های دارای خطا: {result['error_count']}",
+            f"تعداد ردیف‌های تکراری نادیده‌گرفته‌شده: {result.get('duplicate_count', 0)}",
+            "",
+        ]
         for err in result.get("errors", []):
-            lines.append(f"شیت «{err['sheet']}» ردیف {err['row']}: {err['message']}")
+            lines.append(f"❌ خطا — شیت «{err['sheet']}» ردیف {err['row']}: {err['message']}")
+        for dup in result.get("duplicates", []):
+            lines.append(f"⚠️ تکراری — شیت «{dup['sheet']}» ردیف {dup['row']}: {dup['message']}")
         self.result_box.setPlainText("\n".join(lines))
 
         if result["created"] > 0:

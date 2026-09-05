@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 
 from api_client import api_client, ApiError
+from session import handle_api_error
 
 THUMBNAIL_SIZE = 140
 
@@ -56,7 +57,7 @@ class PropertyGalleryDialog(QDialog):
         try:
             images = api_client.list_property_images(self.property_id)
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
 
         self.status_label.setText(f"تعداد عکس‌ها: {len(images)}")
@@ -83,7 +84,7 @@ class PropertyGalleryDialog(QDialog):
         try:
             api_client.upload_property_images(self.property_id, file_paths)
         except ApiError as e:
-            QMessageBox.critical(self, "خطا در آپلود", str(e))
+            handle_api_error(self, e, "خطا در آپلود", critical=True)
             return
         self.load_images()
 
@@ -99,6 +100,6 @@ class PropertyGalleryDialog(QDialog):
         try:
             api_client.delete_property_image(self.property_id, image_id)
         except ApiError as e:
-            QMessageBox.warning(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا")
             return
         self.load_images()

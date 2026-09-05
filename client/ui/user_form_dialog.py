@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 
 from api_client import api_client, ApiError
+from session import handle_api_error
 
 ROLE_LABELS = {"agent": "مشاور", "admin": "مدیر"}
 
@@ -62,7 +63,7 @@ class UserFormDialog(QDialog):
         try:
             api_client.create_agent(username, full_name, password, self.role_combo.currentData())
         except ApiError as e:
-            QMessageBox.critical(self, "خطا", str(e))
+            handle_api_error(self, e, "خطا", critical=True)
             return
 
         QMessageBox.information(self, "موفق", f"حساب «{username}» با موفقیت ساخته شد.")

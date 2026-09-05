@@ -6,6 +6,7 @@ from app.core.security import verify_password, create_access_token
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import Token
+from app.services.activity_log_service import log_activity
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -19,4 +20,5 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="این حساب غیرفعال شده است")
 
     token = create_access_token(user_id=user.id, role=user.role.value, token_version=user.token_version)
+    log_activity(db, user.id, "login", "user", user.id)
     return Token(access_token=token, role=user.role.value, full_name=user.full_name)
