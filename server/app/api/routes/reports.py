@@ -1,5 +1,5 @@
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_admin
 from app.api.routes.properties import _base_query, apply_filters, _build_order_clause
 from app.db.session import get_db
+from app.models.activity_log import ActivityLog
 from app.models.property import Property, PropertyStatus
 from app.models.user import User, UserRole
 from app.schemas.property import PropertyRead
@@ -151,3 +152,70 @@ def agent_performance_pdf(db: Session = Depends(get_db), _admin: User = Depends(
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=agent-performance-report.pdf"},
     )
+
+
+@router.get("/reports/dashboard")
+def dashboard_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    خلاصه‌ی آماری برای تب «داشبورد». برای مشاور فقط آمار خودش، برای مدیر آمار
+    کل دفتر (به‌علاوه‌ی چند شاخص فقط-مدیر مثل تعداد مشاوران و فعالیت امروز).
+    """
+    base = _base_query(db, current_user, status=PropertyStatus.active)
+
+    total_active = base.count()
+
+    by_deal_type_rows = (
+        _base_query(db, current_user, status=PropertyStatus.active)
+        .with_entities(Property.deal_type, func.count(Property.id))
+        .group_by(Property.deal_type)
+        .all()
+    )
+    by_deal_type = {dt.value if hasattr(dt, "value") else dt: count for dt, count in by_deal_type_rows}
+
+    today = date.today()
+    urgent_cutoff = today + timedelta(days=7)
+    normal_cutoff = today + timedelta(days=30)
+
+    urgent_renewals = (
+        _base_query(db, current_user, status=PropertyStatus.active)
+        .filter(Property.contract_end_date.isnot(None), Property.contract_end_date <= urgent_cutoff)
+        .count()
+    )
+    upcoming_renewals = (
+        _base_query(db, current_user, status=PropertyStatus.active)
+        .filter(Property.contract_end_date.isnot(None), Property.contract_end_date <= normal_cutoff)
+        .count()
+    )
+
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    new_this_week = (
+        _base_query(db, current_user, status=PropertyStatus.active)
+        .filter(Property.created_at >= seven_days_ago)
+        .count()
+    )
+
+    result = {
+        "total_active": total_active,
+        "by_deal_type": by_deal_type,
+        "urgent_renewals": urgent_renewals,
+        "upcoming_renewals": upcoming_renewals,
+        "new_this_week": new_this_week,
+    }
+
+    if current_user.role == UserRole.admin:
+        result["total_agents"] = db.query(User).filter(User.role == UserRole.agent).count()
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        result["activity_today"] = db.query(ActivityLog).filter(ActivityLog.created_at >= today_start).count()
+
+    return result
+
+
+@router.post("/reports/trigger-sms-reminders")
+def trigger_sms_reminders(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """
+    فقط برای مدیر: اجرای دستیِ فوری کارِ یادآوری پیامکی، بدون نیاز به منتظر
+    ماندن تا زمان‌بند روزانه (ساعت ۹ صبح). مفید برای تست تنظیمات پیامک یا
+    یک یادآوری فوری خارج از برنامه‌ی معمول.
+    """
+    from app.services.reminder_job import run_daily_reminder_job
+    return run_daily_reminder_job(db)

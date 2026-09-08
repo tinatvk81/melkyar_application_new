@@ -32,6 +32,12 @@ def _parse_jalali_date(value):
     year, month, day = (int(x) for x in text.split("-"))
     return jdatetime.date(year, month, day).togregorian()
 
+def _parse_amenities(value):
+    """«استخر، سند تک‌برگ» → لیست. هم کامای فارسی (،) هم انگلیسی (,) را می‌فهمد."""
+    if pd.isna(value) or str(value).strip() == "":
+        return None
+    parts = [p.strip() for p in str(value).replace("،", ",").split(",")]
+    return [p for p in parts if p] or None
 
 def _parse_common_fields(row: pd.Series) -> dict:
     labels = {label: key for key, label in COMMON_COLUMNS}
@@ -44,6 +50,10 @@ def _parse_common_fields(row: pd.Series) -> dict:
             result[key] = float(raw) if not pd.isna(raw) and str(raw).strip() != "" else None
         elif key == "rooms":
             result[key] = int(raw) if not pd.isna(raw) and str(raw).strip() != "" else None
+
+        elif key == "amenities":
+            result[key] = _parse_amenities(raw)
+
         else:
             result[key] = str(raw).strip() if not pd.isna(raw) and str(raw).strip() != "" else None
 
@@ -155,6 +165,14 @@ def import_workbook(
                     else:
                         details[field["key"]] = value
 
+
+                # قیمت هر متر: اگر کاربر وارد نکرده باشد، از قیمت ÷ متراژ محاسبه می‌شود
+                if deal_type == "sale" and not details.get("price_per_m2"):
+                    price = details.get("price")
+                    area = common.get("area_m2")
+                    if price and area:
+                        details["price_per_m2"] = int(round(price / area))
+                        
                 prop = Property(
                     owner_agent_id=owner_agent_id,
                     deal_type=DealType(deal_type),

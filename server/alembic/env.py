@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.core.config import settings
 from app.db.base import Base
 # ایمپورت همه‌ی مدل‌ها ضروری است تا Alembic بتواند جدول‌هایشان را در autogenerate ببیند
-from app.models import user, property, property_image, activity_log  # noqa: F401
+from app.models import user, property, property_image, activity_log, deal  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

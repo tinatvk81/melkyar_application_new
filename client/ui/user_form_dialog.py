@@ -25,6 +25,8 @@ class UserFormDialog(QDialog):
         self.full_name_input = QLineEdit()
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.Password)
+        self.phone_input = QLineEdit()
+        self.phone_input.setPlaceholderText("مثلاً 09121234567 — برای یادآوری پیامکی")
         self.role_combo = QComboBox()
         for value, label in ROLE_LABELS.items():
             self.role_combo.addItem(label, value)
@@ -33,6 +35,7 @@ class UserFormDialog(QDialog):
         form.addRow("نام کاربری:", self.username_input)
         form.addRow("نام و نام‌خانوادگی:", self.full_name_input)
         form.addRow("رمز عبور اولیه:", self.password_input)
+        form.addRow("تلفن همراه (اختیاری):", self.phone_input)
         form.addRow("نقش:", self.role_combo)
 
         save_btn = QPushButton("ساخت حساب")
@@ -61,7 +64,10 @@ class UserFormDialog(QDialog):
             return
 
         try:
-            api_client.create_agent(username, full_name, password, self.role_combo.currentData())
+            api_client.create_agent(
+                username, full_name, password, self.role_combo.currentData(),
+                phone=self.phone_input.text().strip() or None,
+            )
         except ApiError as e:
             handle_api_error(self, e, "خطا", critical=True)
             return

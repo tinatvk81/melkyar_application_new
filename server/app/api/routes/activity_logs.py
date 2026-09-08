@@ -19,6 +19,7 @@ DEFAULT_PAGE_SIZE = 50
 @router.get("/", response_model=ActivityLogListResponse)
 def list_activity_logs(
     entity_type: Optional[str] = None,
+    user_id: Optional[int] = None,
     days: int = 30,
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
@@ -33,6 +34,8 @@ def list_activity_logs(
     page_size = min(max(page_size, 1), MAX_PAGE_SIZE)
 
     q = db.query(ActivityLog, User.full_name, User.username).join(User, ActivityLog.user_id == User.id)
+    if user_id:
+        q = q.filter(ActivityLog.user_id == user_id)
     if entity_type:
         q = q.filter(ActivityLog.entity_type == entity_type)
     if days > 0:

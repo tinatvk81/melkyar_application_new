@@ -5,17 +5,18 @@
 from datetime import date
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QVBoxLayout, QLineEdit, QComboBox, QDoubleSpinBox,
-    QSpinBox, QCheckBox, QTextEdit, QPushButton, QHBoxLayout, QWidget,
-    QMessageBox, QLabel
-)
 
+from ui.widgets import (PersianSpinBox, PersianDoubleSpinBox, MoneyLineEdit,
+                        PhoneLineEdit, TagInputWidget)
 from api_client import api_client, ApiError
 from session import handle_api_error
 from ui.jalali_date_edit import JalaliDateEdit
 from ui.property_gallery_dialog import PropertyGalleryDialog
-
+from PySide6.QtWidgets import (
+    QDialog, QFormLayout, QVBoxLayout, QLineEdit, QComboBox, QDoubleSpinBox,
+    QSpinBox, QCheckBox, QTextEdit, QPushButton, QHBoxLayout, QWidget,
+    QMessageBox, QLabel, QScrollArea, QFrame
+)
 DEAL_TYPE_LABELS = {
     "sale": "فروش",
     "presale": "پیش‌خرید",
@@ -24,24 +25,6 @@ DEAL_TYPE_LABELS = {
 }
 
 
-class MoneyLineEdit(QLineEdit):
-    """فیلد ورودی مبلغ — فقط رقم می‌پذیرد، چون مبالغ ملکی می‌تواند از سقف int عادی هم بزرگ‌تر باشد."""
-
-    def __init__(self):
-        super().__init__()
-        self.setPlaceholderText("مثلاً 5200000000")
-        self.setAlignment(Qt.AlignRight)
-
-    def value(self):
-        text = self.text().strip().replace(",", "")
-        if not text:
-            return None
-        if not text.isdigit():
-            raise ValueError("مبلغ باید فقط عدد باشد")
-        return int(text)
-
-    def set_value(self, v):
-        self.setText(str(int(v)) if v is not None else "")
 
 
 class PropertyFormDialog(QDialog):
@@ -84,13 +67,11 @@ class PropertyFormDialog(QDialog):
         self.address_input = QLineEdit()
         common_form.addRow("آدرس:", self.address_input)
 
-        self.area_input = QDoubleSpinBox()
-        self.area_input.setRange(0, 100000)
-        self.area_input.setSuffix(" متر مربع")
+        self.area_input = PersianDoubleSpinBox(suffix=" متر مربع")
+        self.area_input.setRange(0, 100000) 
         common_form.addRow("متراژ:", self.area_input)
 
-        self.rooms_input = QSpinBox()
-        self.rooms_input.setRange(0, 20)
+        self.rooms_input = PersianSpinBox(minimum=0, maximum=50)
         common_form.addRow("تعداد اتاق:", self.rooms_input)
 
         checks_row = QHBoxLayout()
@@ -102,9 +83,12 @@ class PropertyFormDialog(QDialog):
         checks_widget.setLayout(checks_row)
         common_form.addRow("امکانات:", checks_widget)
 
+        self.extra_amenities = TagInputWidget()
+        common_form.addRow("امکانات دلخواه:", self.extra_amenities)
+
         self.owner_name_input = QLineEdit()
         common_form.addRow("نام مالک:", self.owner_name_input)
-        self.owner_phone_input = QLineEdit()
+        self.owner_phone_input = PhoneLineEdit()
         common_form.addRow("تلفن مالک:", self.owner_phone_input)
 
         outer.addLayout(common_form)
@@ -117,7 +101,10 @@ class PropertyFormDialog(QDialog):
         outer.addWidget(details_widget)
 
         # فیلدهای اختصاصی (همه ساخته می‌شوند، فقط بر اساس نوع نمایش/مخفی می‌شوند)
-        self.price_input = MoneyLineEdit()                 # فروش
+        self.price_input = MoneyLineEdit()     
+        self.price_per_m2_label = QLabel("—")
+        self.price_input.textChanged.connect(self._update_price_per_m2)
+        self.area_input.valueChanged.connect(self._update_price_per_m2)            # فروش
         self.total_price_input = MoneyLineEdit()            # پیش‌خرید
         self.delivery_date_input = JalaliDateEdit(allow_empty=True)  # پیش‌خرید
         self.monthly_rent_input = MoneyLineEdit()             # اجاره
@@ -134,6 +121,7 @@ class PropertyFormDialog(QDialog):
         outer.addWidget(self.notes_input)
 
         save_btn = QPushButton("ذخیره")
+        save_btn.setObjectName("primary")
         save_btn.clicked.connect(self.handle_save)
         cancel_btn = QPushButton("انصراف")
         cancel_btn.clicked.connect(self.reject)
@@ -150,7 +138,18 @@ class PropertyFormDialog(QDialog):
         btn_row.addWidget(cancel_btn)
         outer.addLayout(btn_row)
 
-        self.setLayout(outer)
+        content = QWidget()
+        content.setLayout(outer)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidget(content)
+        base = QVBoxLayout()
+        base.addWidget(scroll)
+        self.setLayout(base)
+        self.setSizeGripEnabled(True)   # دستگیرهٔ تغییر اندازه در گوشه
+        self.setMinimumSize(430, 540)
+        self.resize(540, 700)
 
     def _clear_details_form(self):
         while self.details_form.rowCount():
@@ -161,6 +160,7 @@ class PropertyFormDialog(QDialog):
 
         if deal_type == "sale":
             self.details_form.addRow("قیمت (تومان):", self.price_input)
+            self.details_form.addRow("قیمت هر متر:", self.price_per_m2_label)
 
         elif deal_type == "presale":
             self.details_form.addRow("مبلغ کل (تومان):", self.total_price_input)
@@ -174,6 +174,20 @@ class PropertyFormDialog(QDialog):
         elif deal_type == "mortgage":
             self.details_form.addRow("مبلغ رهن کامل (تومان):", self.deposit_full_input)
             self.details_form.addRow(self.contract_end_row_label, self.contract_end_input)
+
+
+    def _update_price_per_m2(self):
+        if self.deal_type_combo.currentData() != "sale":
+            return
+        try:
+            price = self.price_input.value()
+        except ValueError:
+            price = None
+        area = self.area_input.value()
+        if price and area:
+            self.price_per_m2_label.setText(f"{round(price / area):,} تومان")
+        else:
+            self.price_per_m2_label.setText("—")
 
     # ---------------------------------------------------------- Fill / Save
     def _fill_from_existing(self):
@@ -189,6 +203,7 @@ class PropertyFormDialog(QDialog):
         self.rooms_input.setValue(p.get("rooms") or 0)
         self.elevator_check.setChecked(bool(p.get("has_elevator")))
         self.parking_check.setChecked(bool(p.get("has_parking")))
+        self.extra_amenities.set_tags(p.get("amenities") or [])
         self.owner_name_input.setText(p.get("owner_name") or "")
         self.owner_phone_input.setText(p.get("owner_phone") or "")
         self.notes_input.setPlainText(p.get("notes") or "")
@@ -240,7 +255,8 @@ class PropertyFormDialog(QDialog):
             "has_elevator": self.elevator_check.isChecked(),
             "has_parking": self.parking_check.isChecked(),
             "owner_name": self.owner_name_input.text().strip() or None,
-            "owner_phone": self.owner_phone_input.text().strip() or None,
+            "owner_phone": self.owner_phone_input.normalized_text() or None,
+            "amenities": self.extra_amenities.get_tags(),
             "contract_end_date": contract_end_date,
             "details": details,
             "notes": self.notes_input.toPlainText().strip() or None,
@@ -256,30 +272,58 @@ class PropertyFormDialog(QDialog):
             QMessageBox.warning(self, "خطا", "وارد کردن شهر الزامی است.")
             return
 
+        if self.owner_phone_input.text().strip() and not self.owner_phone_input.is_valid():
+            QMessageBox.warning(self, "خطا", "شماره تلفن معتبر نیست (فقط رقم، ۱۰ یا ۱۱ رقم).")
+            return
+
         try:
             payload = self._collect_payload()
         except ValueError as e:
             QMessageBox.warning(self, "خطا در مقدار عددی", str(e))
             return
 
+
+        # --- هشدار فایل مشابه/تکراری (مسدودکننده نیست؛ تصمیم با کاربر است) ---
+        try:
+            matches = api_client.check_duplicate(
+                owner_phone=self.owner_phone_input.normalized_text() or None,
+                city=self.city_input.text().strip() or None,
+                address=self.address_input.text().strip() or None,
+            )
+        except ApiError:
+            matches = []
+        if self.property_data:  # در ویرایش، خودِ فایل نباید «مشابه» حساب شود
+            matches = [m for m in matches if m["id"] != self.property_data["id"]]
+        if matches:
+            lines = []
+            for m in matches[:5]:
+                kind = "تکراری (همان شهر و آدرس)" if m["match_kind"] == "exact" else "همان تلفن مالک"
+                lines.append(
+                    f"• #{m['id']} — {m['city']} — {m.get('address') or '—'} — "
+                    f"{m.get('owner_name') or '—'} / {m.get('owner_phone') or '—'} "
+                    f"[ثبت: {m['agent_name']}] ({kind})"
+                )
+            msg = ("فایل‌های مشابه در سیستم موجود است:\n\n" + "\n".join(lines) +
+                   "\n\nبا این حال فایل جدید ثبت شود؟")
+            if QMessageBox.question(self, "هشدار فایل مشابه", msg) != QMessageBox.Yes:
+                return
+                
+        created = None
         try:
             if self.property_data:
                 payload["version"] = self.property_data["version"]
                 api_client.update_property(self.property_data["id"], payload)
             else:
-                api_client.create_property(payload)
+                created = api_client.create_property(payload)  # پاسخ شامل id فایل تازه است
         except ApiError as e:
             if e.status_code == 409:
-                # قفل هم‌زمان: شخص دیگری بین‌این‌حین این فایل را تغییر داده است.
-                # به‌جای رونویسی بی‌صدا، به کاربر اطلاع می‌دهیم که باید فایل را
-                # دوباره باز کند (این دیالوگ بسته می‌شود تا فهرست دوباره تازه شود).
                 QMessageBox.warning(
                     self, "تغییر هم‌زمان",
                     "این فایل توسط شخص دیگری تغییر کرده است.\n"
                     "برای جلوگیری از رونویسی تغییرات او، لطفاً این پنجره را ببندید "
                     "و فایل را دوباره باز کنید تا آخرین نسخه را ببینید.",
                 )
-                self.on_saved()  # فهرست پشت این پنجره را تازه کن تا نسخه‌ی جدید در دسترس باشد
+                self.on_saved()
                 self.reject()
                 return
             handle_api_error(self, e, "خطا در ذخیره‌سازی", critical=True)
@@ -287,4 +331,14 @@ class PropertyFormDialog(QDialog):
 
         QMessageBox.information(self, "موفق", "فایل با موفقیت ذخیره شد.")
         self.on_saved()
+
+        if created:
+            answer = QMessageBox.question(
+                self, "افزودن عکس",
+                "آیا می‌خواهید همین حالا برای این فایل عکس اضافه کنید؟",
+            )
+            if answer == QMessageBox.Yes:
+                label = created.get("address") or created.get("city") or ""
+                PropertyGalleryDialog(created["id"], property_label=label).exec()
+
         self.accept()

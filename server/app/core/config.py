@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     MAX_IMAGE_SIZE_MB: int = 8
     MAX_IMAGES_PER_UPLOAD: int = 10
 
+    # --- یادآوری پیامکی به مشاور ---
+    # پیش‌فرض غیرفعال است چون نیاز به یک حساب واقعی نزد یک سرویس‌دهنده‌ی
+    # پیامک ایرانی (مثل کاوه‌نگار) دارد. برای فعال‌سازی: یک حساب بسازید،
+    # API Key بگیرید، و این مقادیر را در .env پر کنید.
+    SMS_ENABLED: bool = False
+    SMS_API_KEY: str = ""
+    SMS_SENDER_LINE: str = ""  # اختیاری؛ برخی سرویس‌دهنده‌ها یک خط پیش‌فرض دارند
+    SMS_URGENT_DAYS_THRESHOLD: int = 3  # فقط قراردادهای این‌قدر یا کمتر نزدیک، پیامک می‌گیرند
+
     class Config:
         env_file = ".env"
 

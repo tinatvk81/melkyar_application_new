@@ -5,8 +5,9 @@ from app.api.deps import require_admin
 from app.core.security import hash_password
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserRead, PasswordReset
+from app.schemas.user import UserCreate, UserRead, PasswordReset, UserUpdatePhone
 from app.services.activity_log_service import log_activity
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -25,11 +26,27 @@ def create_agent(data: UserCreate, db: Session = Depends(get_db), admin: User = 
         full_name=data.full_name,
         hashed_password=hash_password(data.password),
         role=data.role,
+        phone=data.phone,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
     log_activity(db, admin.id, "create", "user", user.id, detail=f"{user.username} ({user.role.value})")
+    return user
+
+
+@router.put("/{user_id}/phone", response_model=UserRead)
+def update_phone(
+    user_id: int, data: UserUpdatePhone, db: Session = Depends(get_db), admin: User = Depends(require_admin)
+):
+    """برای فعال‌سازی یادآوری پیامکی، هر مشاور باید یک شماره تلفن ثبت‌شده داشته باشد."""
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="کاربر پیدا نشد")
+    user.phone = data.phone
+    db.commit()
+    db.refresh(user)
+    log_activity(db, admin.id, "update_phone", "user", user.id, detail=user.username)
     return user
 
 
@@ -70,4 +87,21 @@ def reset_password(
     db.commit()
     db.refresh(user)
     log_activity(db, admin.id, "reset_password", "user", user.id, detail=user.username)
+    return user
+
+
+
+class CommissionRatesIn(BaseModel):
+    rates: dict  # مثال: {"sale": 45, "rent": 10, "presale": 30, "mortgage": 8}
+
+@router.put("/{user_id}/commission-rates", response_model=UserRead)
+def set_commission_rates(user_id: int, data: CommissionRatesIn,
+                         db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "کاربر پیدا نشد")
+    user.commission_rates = data.rates
+    db.commit()
+    db.refresh(user)
+    log_activity(db, admin.id, "update", "user", user.id, detail=f"درصد پورسانت {user.username}")
     return user

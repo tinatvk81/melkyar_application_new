@@ -20,6 +20,7 @@ class PropertyCreate(BaseModel):
     contract_end_date: Optional[date] = None
     details: dict = {}
     notes: Optional[str] = None
+    amenities: list[str] | None = None
 
 
 class PropertyUpdate(PropertyCreate):
@@ -27,6 +28,7 @@ class PropertyUpdate(PropertyCreate):
     # قفل هم‌زمان: کلاینت باید نسخه‌ای که خوانده را برگرداند تا سرور بتواند
     # تشخیص دهد آیا از آخرین باری که این فایل را دید، شخص دیگری تغییرش داده یا نه.
     version: int
+    amenities: list[str] | None = None
 
 
 class PropertyRead(BaseModel):
@@ -49,6 +51,7 @@ class PropertyRead(BaseModel):
     notes: Optional[str]
     created_at: datetime
     updated_at: datetime
+    amenities: list[str] | None = None
 
     class Config:
         from_attributes = True

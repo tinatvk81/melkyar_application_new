@@ -1,18 +1,22 @@
 from PySide6.QtCore import Qt
+
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
-    QFileDialog, QComboBox
+    QFileDialog, QComboBox, QHeaderView
 )
-
+from ui.widgets import QuickFilterBar, MatchHighlightDelegate, bind_ctrl_f
 from api_client import api_client, ApiError
 from session import handle_api_error
 from ui.property_form import PropertyFormDialog, DEAL_TYPE_LABELS
 from ui.import_excel_dialog import ImportExcelDialog
 from ui.user_form_dialog import UserFormDialog, ROLE_LABELS
 from ui.property_filter_panel import PropertyFilterPanel
-from ui.archive_dialog import ArchivePropertiesDialog
-
+# from ui.archive_dialog import ArchivePropertiesDialog
+from ui.dashboard_tab import DashboardTab
+from ui.deals_tab import DealsTab
+from ui.archive_tab import ArchiveTab
+from ui.agent_center_tab import AgentCenterTab
 
 class PropertyListTab(QWidget):
     """فهرست فایل‌ها — برای مشاور فقط فایل‌های خودش، برای مدیر همه (فیلتر در سرور اعمال می‌شود)."""
@@ -27,6 +31,8 @@ class PropertyListTab(QWidget):
 
         self.filter_panel = PropertyFilterPanel(on_apply=self._handle_apply_filters, on_clear=self._handle_clear_filters)
 
+
+
         self.table = QTableWidget()
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(
@@ -35,6 +41,21 @@ class PropertyListTab(QWidget):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.doubleClicked.connect(self.handle_edit_selected)
+
+                # ستون‌ها با محتوا هماهنگ می‌شوند و ستون «آدرس» فضای باقی‌مانده را می‌گیرد
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.Stretch)   # ستون آدرس
+        self.table.verticalHeader().setDefaultSectionSize(34)  # ردیف‌های کمی بلندتر و خواناتر
+
+
+        self.quick_bar = QuickFilterBar()
+        self.quick_bar.filter_selected.connect(self._handle_quick_filter)
+
+        self._delegate = MatchHighlightDelegate(self.table)
+        self.table.setItemDelegate(self._delegate)
+
+        bind_ctrl_f(self, self.filter_panel.search_input)
 
         add_btn = QPushButton("افزودن فایل جدید")
         add_btn.clicked.connect(self.handle_add_new)
@@ -54,8 +75,8 @@ class PropertyListTab(QWidget):
         export_excel_btn = QPushButton("خروجی اکسل")
         export_excel_btn.clicked.connect(self.handle_export_excel)
 
-        archive_btn = QPushButton("آرشیو فایل‌های غیرفعال")
-        archive_btn.clicked.connect(self.handle_open_archive)
+        # archive_btn = QPushButton("آرشیو فایل‌های غیرفعال")
+        # archive_btn.clicked.connect(self.handle_open_archive)
 
         refresh_btn = QPushButton("به‌روزرسانی فهرست")
         refresh_btn.clicked.connect(self.load_properties)
@@ -67,7 +88,7 @@ class PropertyListTab(QWidget):
         top_bar.addWidget(import_btn)
         top_bar.addWidget(export_pdf_btn)
         top_bar.addWidget(export_excel_btn)
-        top_bar.addWidget(archive_btn)
+        # top_bar.addWidget(archive_btn)
         top_bar.addStretch()
         top_bar.addWidget(refresh_btn)
 
@@ -86,7 +107,17 @@ class PropertyListTab(QWidget):
         pagination_bar.addStretch()
         pagination_bar.addWidget(self.next_page_btn)
 
+
+        self.toggle_filter_btn = QPushButton("پنهان کردن فیلترها ▲")
+        self.toggle_filter_btn.setObjectName("chip")
+        self.toggle_filter_btn.clicked.connect(self._toggle_filters)
+
+        tools_row = QHBoxLayout()
+        tools_row.addWidget(self.toggle_filter_btn)
+        tools_row.addWidget(self.quick_bar, 1)
+
         layout = QVBoxLayout()
+        layout.addLayout(tools_row)
         layout.addWidget(self.filter_panel)
         layout.addLayout(top_bar)
         layout.addWidget(self.table)
@@ -94,6 +125,11 @@ class PropertyListTab(QWidget):
         self.setLayout(layout)
 
         self.load_properties()
+
+    def _toggle_filters(self):
+        show = not self.filter_panel.isVisible()
+        self.filter_panel.setVisible(show)
+        self.toggle_filter_btn.setText("پنهان کردن فیلترها ▲" if show else "نمایش فیلترها ▼")
 
     def _handle_apply_filters(self, filters: dict):
         self._current_filters = filters
@@ -138,6 +174,8 @@ class PropertyListTab(QWidget):
         self.next_page_btn.setEnabled(self._current_page < self._total_pages)
 
         self._properties_by_row = properties
+        self._delegate.set_term(self.filter_panel.search_input.text())
+
         self.table.setRowCount(len(properties))
         for row, p in enumerate(properties):
             self.table.setItem(row, 0, QTableWidgetItem(p.get("city", "")))
@@ -210,9 +248,30 @@ class PropertyListTab(QWidget):
             return
         QMessageBox.information(self, "موفق", f"فایل اکسل ذخیره شد:\n{save_path}")
 
-    def handle_open_archive(self):
-        dialog = ArchivePropertiesDialog(on_restored=self.load_properties)
-        dialog.exec()
+    # def handle_open_archive(self):
+    #     dialog = ArchivePropertiesDialog(on_restored=self.load_properties)
+    #     dialog.exec()
+
+    def _handle_quick_filter(self, key, value):
+        fp = self.filter_panel
+        if key is None:                      # چیپ «همه»
+            fp._handle_clear()
+            return
+        if key == "deal_type":
+            idx = fp.deal_type_combo.findData(value)
+            fp.deal_type_combo.setCurrentIndex(max(idx, 0))
+        elif key == "max_price_sale":
+            fp.deal_type_combo.setCurrentIndex(fp.deal_type_combo.findData("sale"))
+            fp.min_price_input.clear()
+            fp.max_price_input.set_value(value)
+        elif key == "min_area":
+            fp.max_area_input.setValue(0)
+            fp.min_area_input.setValue(value)
+        elif key == "has_elevator":
+            fp.elevator_combo.setCurrentIndex(2)
+        elif key == "has_parking":
+            fp.parking_combo.setCurrentIndex(2)
+        fp._handle_apply()
 
 
 class RenewalsTab(QWidget):
@@ -248,190 +307,7 @@ class RenewalsTab(QWidget):
             self.table.setItem(row, 3, QTableWidgetItem(p.get("owner_phone") or ""))
 
 
-class UserManagementTab(QWidget):
-    """فقط برای مدیر: مدیریت حساب مشاوران."""
 
-    def __init__(self):
-        super().__init__()
-        self.setLayoutDirection(Qt.RightToLeft)
-        self._users_by_row = []
-
-        self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["نام کاربری", "نام کامل", "نقش", "فعال"])
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-
-        add_btn = QPushButton("افزودن حساب جدید")
-        add_btn.clicked.connect(self.handle_add_new)
-
-        self.toggle_btn = QPushButton("غیرفعال‌سازی حساب انتخاب‌شده")
-        self.toggle_btn.clicked.connect(self.handle_toggle_active)
-
-        reset_pw_btn = QPushButton("ریست رمز عبور حساب انتخاب‌شده")
-        reset_pw_btn.clicked.connect(self.handle_reset_password)
-
-        refresh_btn = QPushButton("به‌روزرسانی فهرست کاربران")
-        refresh_btn.clicked.connect(self.load_users)
-
-        self.table.itemSelectionChanged.connect(self._update_toggle_button_label)
-
-        top_bar = QHBoxLayout()
-        top_bar.addWidget(add_btn)
-        top_bar.addWidget(self.toggle_btn)
-        top_bar.addWidget(reset_pw_btn)
-        top_bar.addStretch()
-        top_bar.addWidget(refresh_btn)
-
-        layout = QVBoxLayout()
-        layout.addLayout(top_bar)
-        layout.addWidget(self.table)
-        self.setLayout(layout)
-        self.load_users()
-
-    def load_users(self):
-        try:
-            users = api_client.list_users()
-        except ApiError as e:
-            handle_api_error(self, e, "خطا")
-            return
-        self._users_by_row = users
-        self.table.setRowCount(len(users))
-        for row, u in enumerate(users):
-            self.table.setItem(row, 0, QTableWidgetItem(u["username"]))
-            self.table.setItem(row, 1, QTableWidgetItem(u["full_name"]))
-            self.table.setItem(row, 2, QTableWidgetItem(ROLE_LABELS.get(u["role"], u["role"])))
-            self.table.setItem(row, 3, QTableWidgetItem("بله" if u["is_active"] else "خیر"))
-        self._update_toggle_button_label()
-
-    def _selected_user(self):
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self._users_by_row):
-            return None
-        return self._users_by_row[row]
-
-    def _update_toggle_button_label(self):
-        user = self._selected_user()
-        if user and not user["is_active"]:
-            self.toggle_btn.setText("فعال‌سازی حساب انتخاب‌شده")
-        else:
-            self.toggle_btn.setText("غیرفعال‌سازی حساب انتخاب‌شده")
-
-    def handle_add_new(self):
-        dialog = UserFormDialog(on_created=self.load_users)
-        dialog.exec()
-
-    def handle_toggle_active(self):
-        user = self._selected_user()
-        if not user:
-            QMessageBox.information(self, "توجه", "ابتدا یک کاربر را از فهرست انتخاب کنید.")
-            return
-
-        if user["is_active"]:
-            confirm = QMessageBox.question(
-                self, "تایید",
-                f"حساب «{user['username']}» غیرفعال شود؟ او دیگر نمی‌تواند وارد شود و نشست فعلی‌اش هم فوراً بسته می‌شود."
-            )
-            if confirm != QMessageBox.Yes:
-                return
-            action = api_client.deactivate_user
-        else:
-            action = api_client.activate_user
-
-        try:
-            action(user["id"])
-        except ApiError as e:
-            handle_api_error(self, e, "خطا")
-            return
-        self.load_users()
-
-    def handle_reset_password(self):
-        user = self._selected_user()
-        if not user:
-            QMessageBox.information(self, "توجه", "ابتدا یک کاربر را از فهرست انتخاب کنید.")
-            return
-
-        new_password, ok = QInputDialog.getText(
-            self, "ریست رمز عبور", f"رمز عبور جدید برای «{user['username']}»:", QLineEdit.Password
-        )
-        if not ok or not new_password:
-            return
-        if len(new_password) < 6:
-            QMessageBox.warning(self, "خطا", "رمز عبور باید حداقل ۶ کاراکتر باشد.")
-            return
-
-        try:
-            api_client.reset_user_password(user["id"], new_password)
-        except ApiError as e:
-            handle_api_error(self, e, "خطا")
-            return
-        QMessageBox.information(
-            self, "موفق",
-            f"رمز عبور «{user['username']}» تغییر کرد. این رمز جدید را حتماً به‌صورت امن به او اطلاع دهید."
-        )
-
-
-class AgentPerformanceTab(QWidget):
-    """فقط برای مدیر: گزارش عملکرد مشاوران (تعداد فایل به تفکیک نوع معامله)."""
-
-    def __init__(self):
-        super().__init__()
-        self.setLayoutDirection(Qt.RightToLeft)
-
-        self.table = QTableWidget()
-        self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels(
-            ["نام مشاور", "تعداد کل فایل", "۳۰ روز اخیر", "فروش", "پیش‌خرید", "اجاره", "رهن کامل"]
-        )
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-
-        refresh_btn = QPushButton("به‌روزرسانی گزارش")
-        refresh_btn.clicked.connect(self.load_report)
-
-        export_btn = QPushButton("خروجی PDF گزارش")
-        export_btn.clicked.connect(self.handle_export_pdf)
-
-        top_bar = QHBoxLayout()
-        top_bar.addWidget(refresh_btn)
-        top_bar.addWidget(export_btn)
-        top_bar.addStretch()
-
-        layout = QVBoxLayout()
-        layout.addLayout(top_bar)
-        layout.addWidget(self.table)
-        self.setLayout(layout)
-        self.load_report()
-
-    def load_report(self):
-        try:
-            agents = api_client.get_agent_performance()
-        except ApiError as e:
-            handle_api_error(self, e, "خطا")
-            return
-
-        self.table.setRowCount(len(agents))
-        for row, agent in enumerate(agents):
-            by_type = agent.get("by_deal_type", {})
-            self.table.setItem(row, 0, QTableWidgetItem(agent.get("full_name") or agent.get("username") or ""))
-            self.table.setItem(row, 1, QTableWidgetItem(str(agent.get("total", 0))))
-            self.table.setItem(row, 2, QTableWidgetItem(str(agent.get("last_30_days", 0))))
-            self.table.setItem(row, 3, QTableWidgetItem(str(by_type.get("sale", 0))))
-            self.table.setItem(row, 4, QTableWidgetItem(str(by_type.get("presale", 0))))
-            self.table.setItem(row, 5, QTableWidgetItem(str(by_type.get("rent", 0))))
-            self.table.setItem(row, 6, QTableWidgetItem(str(by_type.get("mortgage", 0))))
-
-    def handle_export_pdf(self):
-        save_path, _ = QFileDialog.getSaveFileName(
-            self, "ذخیره‌ی گزارش PDF", "گزارش-عملکرد-مشاوران.pdf", "PDF Files (*.pdf)"
-        )
-        if not save_path:
-            return
-        try:
-            api_client.export_agent_performance_pdf(save_path)
-        except ApiError as e:
-            handle_api_error(self, e, "خطا")
-            return
-        QMessageBox.information(self, "موفق", f"گزارش ذخیره شد:\n{save_path}")
 
 
 class ActivityLogTab(QWidget):
@@ -550,17 +426,31 @@ class MainWindow(QMainWindow):
         self.resize(1000, 650)
 
         tabs = QTabWidget()
-        tabs.addTab(PropertyListTab(), "فهرست فایل‌ها")
+        self._index = {}
+        self._list_tab = PropertyListTab()
+        self._index["dashboard"] = tabs.addTab(DashboardTab(on_navigate=self._dashboard_navigate), "داشبورد")
+        self._index["list"] = tabs.addTab(self._list_tab, "فهرست فایل‌ها")
         self._renewals_tab_index = tabs.count()
-        tabs.addTab(RenewalsTab(), "قراردادهای رو‌به‌اتمام")
+        self._index["renewals"] = tabs.addTab(RenewalsTab(), "قراردادهای رو‌به‌اتمام")
+        self._index["archive"] = tabs.addTab(ArchiveTab(), "بایگانی")
 
         if api_client.role == "admin":
-            tabs.addTab(AgentPerformanceTab(), "گزارش عملکرد مشاوران")
-            tabs.addTab(UserManagementTab(), "مدیریت کاربران")
-            tabs.addTab(ActivityLogTab(), "تاریخچه‌ی فعالیت‌ها")
+            self._index["agents"] = tabs.addTab(AgentCenterTab(), "مشاوران و مدیریت")
+            self._index["deals"] = tabs.addTab(DealsTab(), "حسابداری پورسانت")
+            self._index["activity"] = tabs.addTab(ActivityLogTab(), "تاریخچه‌ی فعالیت‌ها")
 
         self.tabs = tabs
         self.setCentralWidget(tabs)
 
     def switch_to_renewals_tab(self):
         self.tabs.setCurrentIndex(self._renewals_tab_index)
+
+    def _dashboard_navigate(self, target, deal_type=None):
+        if target == "list":
+            if deal_type:
+                fp = self._list_tab.filter_panel
+                fp.deal_type_combo.setCurrentIndex(fp.deal_type_combo.findData(deal_type))
+                self._list_tab._handle_apply_filters(fp.get_filters())
+            self.tabs.setCurrentIndex(self._index["list"])
+        elif target in self._index:
+            self.tabs.setCurrentIndex(self._index[target])

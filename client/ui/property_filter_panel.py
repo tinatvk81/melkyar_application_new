@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.property_form import DEAL_TYPE_LABELS, MoneyLineEdit
-
+from PySide6.QtCore import QTimer
 TRI_STATE_OPTIONS = [("", "فرقی نمی‌کند"), ("yes", "بله"), ("no", "خیر")]
 
 
@@ -29,6 +29,13 @@ class PropertyFilterPanel(QWidget):
         self.search_input.setPlaceholderText("جستجو در آدرس، توضیحات، نام یا تلفن مالک...")
         self.search_input.returnPressed.connect(self._handle_apply)
 
+        # جست‌وجوی زنده: ۴۰۰ میلی‌ثانیه بعد از آخرین حرف تایپ‌شده، فیلتر خودکار اعمال می‌شود
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(400)
+        self._search_timer.timeout.connect(self._handle_apply)
+        self.search_input.textChanged.connect(lambda: self._search_timer.start())
+
         self.deal_type_combo = QComboBox()
         self.deal_type_combo.addItem("همه", "")
         for value, label in DEAL_TYPE_LABELS.items():
@@ -36,14 +43,17 @@ class PropertyFilterPanel(QWidget):
 
         self.min_area_input = QDoubleSpinBox()
         self.min_area_input.setRange(0, 100000)
-        self.min_area_input.setSpecialValueText(" ")  # نمایش خالی وقتی مقدار صفر است
+        # self.min_area_input.setSpecialValueText(" ")  # نمایش خالی وقتی مقدار صفر است
         self.max_area_input = QDoubleSpinBox()
         self.max_area_input.setRange(0, 100000)
-        self.max_area_input.setSpecialValueText(" ")
+        # self.max_area_input.setSpecialValueText(" ")
 
         self.min_rooms_input = QSpinBox()
         self.min_rooms_input.setRange(0, 20)
-        self.min_rooms_input.setSpecialValueText(" ")
+        # self.min_rooms_input.setSpecialValueText(" ")
+
+        for sb in (self.min_area_input, self.max_area_input, self.min_rooms_input):
+            sb.setMinimumWidth(130)
 
         self.elevator_combo = QComboBox()
         for value, label in TRI_STATE_OPTIONS:

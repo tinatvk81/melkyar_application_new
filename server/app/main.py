@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import auth, properties, users, version, import_excel, property_images, reports, activity_logs
+from app.api.routes import auth, properties, users, version, import_excel, property_images, reports, activity_logs, deals
 from app.core.config import settings
 
 app = FastAPI(
@@ -30,7 +30,7 @@ app.include_router(reports.router)
 app.include_router(activity_logs.router)
 app.include_router(users.router)
 app.include_router(version.router)
-
+app.include_router(deals.router)
 # پوشه‌ای که نصب‌کننده‌های exe نسخه‌های جدید در آن قرار می‌گیرند (بخش ۸ روادمپ)
 app.mount("/static-installers", StaticFiles(directory="static_installers"), name="static-installers")
 
@@ -53,6 +53,24 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 def on_startup():
     logger.info(f"سرور راه‌اندازی شد — نسخه {settings.APP_VERSION} — فایل لاگ: {log_file_path}")
+
+    if settings.SMS_ENABLED:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from app.db.session import SessionLocal
+        from app.services.reminder_job import run_daily_reminder_job
+
+        def scheduled_job():
+            db = SessionLocal()
+            try:
+                result = run_daily_reminder_job(db)
+                logger.info(f"کارِ یادآوری روزانه‌ی پیامکی اجرا شد: {result}")
+            finally:
+                db.close()
+
+        scheduler = BackgroundScheduler(timezone="Asia/Tehran")
+        scheduler.add_job(scheduled_job, "cron", hour=9, minute=0)  # هر روز ساعت ۹ صبح
+        scheduler.start()
+        logger.info("زمان‌بند یادآوری پیامکی فعال شد (هر روز ساعت ۹ صبح)")
 
 
 @app.get("/health")

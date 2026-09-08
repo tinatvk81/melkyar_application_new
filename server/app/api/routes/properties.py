@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, Float, or_
+from sqlalchemy import func, Float, or_, and_
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -140,6 +140,7 @@ def list_properties(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     search: Optional[str] = None,
+    owner_agent_id: Optional[int] = None,
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
     page: int = 1,
@@ -157,6 +158,8 @@ def list_properties(
     `sort_order` یکی از: asc, desc
     """
     q = _base_query(db, current_user, status=PropertyStatus.active)
+    if current_user.role == UserRole.admin and owner_agent_id:
+        q = q.filter(Property.owner_agent_id == owner_agent_id)
     q = apply_filters(
         q, city=city, district=district, deal_type=deal_type, min_area=min_area, max_area=max_area,
         min_rooms=min_rooms, has_elevator=has_elevator, has_parking=has_parking,
@@ -168,18 +171,68 @@ def list_properties(
 
 @router.get("/archived", response_model=PropertyListResponse)
 def list_archived_properties(
+    status: str = "inactive",
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    فهرست فایل‌هایی که غیرفعال شده‌اند (آرشیو). قبل از این endpoint، هیچ راهی
-    برای دیدن یا بازگرداندن یک فایل غیرفعال‌شده نبود — اگر مشاوری اشتباهی فایلی
-    را غیرفعال می‌کرد، آن فایل عملاً برای همیشه از دسترس خارج می‌شد.
-    """
-    q = _base_query(db, current_user, status=PropertyStatus.inactive)
+    if status not in ("inactive", "sold"):
+        raise HTTPException(status_code=400, detail="status باید inactive یا sold باشد")
+    st = PropertyStatus.sold if status == "sold" else PropertyStatus.inactive
+    q = _base_query(db, current_user, status=st)
     return _paginate(q, page, page_size)
+
+
+def _norm_text(s: str | None) -> str:
+    return " ".join((s or "").strip().lower().split())
+
+
+@router.get("/check-duplicate")
+def check_duplicate(
+    owner_phone: Optional[str] = None,
+    city: Optional[str] = None,
+    address: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    هشدار فایل مشابه (مسدودکننده نیست): بر اساس تلفن مالک یا شهر+آدرس یکسان.
+    عمداً بین همه‌ی مشاورها جست‌وجو می‌کند تا ثبت فایل تکراری توسط دو نفر متوجه شود.
+    """
+    phone = (owner_phone or "").strip()
+    ncity, naddr = _norm_text(city), _norm_text(address)
+
+    conds = []
+    if phone:
+        conds.append(Property.owner_phone == phone)
+    if ncity and naddr:
+        conds.append(and_(
+            func.lower(Property.city) == ncity,
+            func.lower(func.trim(Property.address)) == naddr,
+        ))
+    if not conds:
+        return []
+
+    rows = (
+        db.query(Property, User.full_name)
+        .join(User, Property.owner_agent_id == User.id)
+        .filter(Property.status == PropertyStatus.active, or_(*conds))
+        .order_by(Property.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [{
+        "id": p.id,
+        "city": p.city,
+        "address": p.address,
+        "deal_type": p.deal_type.value if hasattr(p.deal_type, "value") else str(p.deal_type),
+        "owner_name": p.owner_name,
+        "owner_phone": p.owner_phone,
+        "agent_name": agent_name,
+        "match_kind": "exact" if (ncity and naddr and _norm_text(p.city) == ncity
+                                  and _norm_text(p.address) == naddr) else "phone",
+    } for p, agent_name in rows]
 
 
 @router.post("/{property_id}/reactivate", response_model=PropertyRead)
@@ -187,11 +240,10 @@ def reactivate_property(
     property_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """یک فایل غیرفعال‌شده را دوباره فعال می‌کند (بازگرداندن از آرشیو)."""
-    prop = (
-        _base_query(db, current_user, status=PropertyStatus.inactive)
-        .filter(Property.id == property_id)
-        .first()
-    )
+    q = db.query(Property).filter(Property.id == property_id, Property.status != PropertyStatus.active)
+    if current_user.role != UserRole.admin:
+        q = q.filter(Property.owner_agent_id == current_user.id)
+    prop = q.first()
     if not prop:
         raise HTTPException(status_code=404, detail="فایل غیرفعال‌شده‌ای با این مشخصات پیدا نشد")
     prop.status = PropertyStatus.active

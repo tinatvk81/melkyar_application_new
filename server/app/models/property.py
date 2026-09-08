@@ -9,7 +9,7 @@
 import enum
 from datetime import datetime, date, timezone
 
-from sqlalchemy import String, Integer, Float, Date, DateTime, Enum, ForeignKey, Boolean
+from sqlalchemy import String, Integer, Float, Date, DateTime, Enum, ForeignKey, Boolean, JSON 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,7 +25,8 @@ class DealType(str, enum.Enum):
 
 class PropertyStatus(str, enum.Enum):
     active = "active"
-    inactive = "inactive"   # به‌جای حذف قطعی، فقط غیرفعال می‌شود
+    inactive = "inactive"
+    sold = "sold"   # معامله قطعی شده — در تب بایگانی نمایش داده می‌شود
 
 
 class Property(Base):
@@ -57,6 +58,8 @@ class Property(Base):
     has_parking: Mapped[bool] = mapped_column(Boolean, default=False)
     owner_name: Mapped[str] = mapped_column(String(128), nullable=True)   # مالک ملک
     owner_phone: Mapped[str] = mapped_column(String(32), nullable=True)
+
+    amenities: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # فقط برای اجاره/رهن: تاریخ پایان قرارداد (برای ماژول یادآوری)
     contract_end_date: Mapped[date] = mapped_column(Date, nullable=True, index=True)
