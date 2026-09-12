@@ -15,6 +15,7 @@ ENV/
 # --- رمزها و تنظیمات حساس — هرگز نباید در گیت باشند ---
 .env
 *.env.local
+*.env.docker
 
 # --- IDE ---
 .vscode/
@@ -50,3 +51,4 @@ client/dist/
 .pytest_cache/
 htmlcov/
 .coverage
+.env

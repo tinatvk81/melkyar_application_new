@@ -1,1 +1,32 @@
-source venv/bin/activate 
+# نصب docker (اگر نیست):
+curl -fsSL https://get.docker.com | sh
+
+cd /path/to/melkyar
+cp .env.docker.example .env.docker   # مقادیر واقعی را بگذار
+
+docker compose up -d --build         # db + server بالا می‌آیند
+
+# ساخت جداول + مدیر (فقط بار اول):
+docker compose exec server alembic upgrade head
+docker compose exec server python scripts/init_admin.py
+
+# تست:
+curl http://localhost:8000/health
+
+#آپدیت سرور با داکر (دیتا سالم می‌ماند ✅):#
+git pull
+docker compose up -d --build        # فقط کد rebuild می‌شود؛ db_data volume دست‌نخورده
+docker compose exec server alembic upgrade head   # اگر migration جدید باشد
+
+#بکاپ در حالت داکر:
+docker compose exec db pg_dump -U melkyar_app melkyar | gzip > backups/melkyar_$(date +%F).sql.gz
+
+
+# ساده‌ترین راه: clone خصوصی با توکن
+git clone https://github.com/tinatvk81/melkyar_application_new.git melkyar
+cd melkyar
+cp .env.docker.example .env.docker && nano .env.docker   # رمزهای واقعی
+docker compose up -d --build
+docker compose exec server alembic upgrade head
+docker compose exec server python scripts/init_admin.py
+curl http://localhost:8000/health    # ✅
