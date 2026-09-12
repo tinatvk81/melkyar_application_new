@@ -53,6 +53,8 @@ class PropertyRead(BaseModel):
     updated_at: datetime
     amenities: list[str] | None = None
 
+    has_images: bool = False
+    cover_image_id: Optional[int] = None
     class Config:
         from_attributes = True
 

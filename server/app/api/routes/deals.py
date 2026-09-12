@@ -3,7 +3,7 @@ import os
 import shutil
 import uuid
 from datetime import date, datetime, timezone
-
+from app.models.notification import Notification
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
@@ -23,15 +23,20 @@ RECEIPT_DIR = os.path.join("media", "receipts")
 
 
 def _deal_out(db: Session, d: Deal) -> dict:
-    paid = db.query(func.coalesce(func.sum(CommissionPayment.amount), 0)).filter(
-        CommissionPayment.deal_id == d.id).scalar()
+    to_agent = db.query(func.coalesce(func.sum(CommissionPayment.amount), 0)).filter(
+        CommissionPayment.deal_id == d.id, CommissionPayment.kind == "to_agent").scalar()
+    from_agent = db.query(func.coalesce(func.sum(CommissionPayment.amount), 0)).filter(
+        CommissionPayment.deal_id == d.id, CommissionPayment.kind == "from_agent").scalar()
     return {
         "id": d.id, "property_id": d.property_id, "agent_id": d.agent_id,
         "deal_amount": d.deal_amount, "commission_percent": d.commission_percent,
         "commission_amount": d.commission_amount, "status": d.status,
         "contract_date": d.contract_date, "finalized_at": d.finalized_at,
         "notes": d.notes, "created_at": d.created_at,
-        "paid_total": int(paid), "remaining": max(int(d.commission_amount) - int(paid), 0),
+        # "paid_total": int(paid), "remaining": max(int(d.commission_amount) - int(paid), 0),
+        "paid_total": int(to_agent),
+        "received_total": int(from_agent),
+        "remaining": int(d.commission_amount) - int(to_agent) + int(from_agent),
     }
 
 
@@ -97,6 +102,12 @@ def finalize_deal(deal_id: int, db: Session = Depends(get_db), admin: User = Dep
     d = db.get(Deal, deal_id)
     if not d:
         raise HTTPException(404, "معامله پیدا نشد")
+
+    if d.status == DealStatus.finalized:
+        raise HTTPException(400, "این معامله قبلاً قطعی شده است — نیازی به قطعی دوباره نیست")
+    if d.status == DealStatus.canceled:
+        raise HTTPException(400, "این معامله لغو شده و قابل قطعی‌کردن نیست")
+
     d.status = DealStatus.finalized
     d.finalized_at = datetime.now(timezone.utc)
     prop = db.get(Property, d.property_id)
@@ -105,6 +116,33 @@ def finalize_deal(deal_id: int, db: Session = Depends(get_db), admin: User = Dep
     db.commit()
     db.refresh(d)
     log_activity(db, admin.id, "finalize", "deal", d.id, detail=f"قطعی — پورسانت {d.commission_amount:,}")
+    db.add(Notification(user_id=d.agent_id, title="معامله‌ی شما قطعی شد",
+                        body=f"معامله #{d.id} قطعی شد — پورسانت {d.commission_amount:,} تومان.",
+                        entity_type="deal", entity_id=d.id))
+    db.commit()
+    return _deal_out(db, d)
+
+
+
+@router.post("/{deal_id}/unfinalize")
+def unfinalize_deal(deal_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """بازگرداندن معامله‌ی قطعی‌شده به «در جریان» (برای اصلاح مبلغ یا لغو)."""
+    d = db.get(Deal, deal_id)
+    if not d:
+        raise HTTPException(404, "معامله پیدا نشد")
+    if d.status != DealStatus.finalized:
+        raise HTTPException(400, "فقط معامله‌ی قطعی‌شده قابل بازگشت است")
+    d.status = DealStatus.pending
+    d.finalized_at = None
+    prop = db.get(Property, d.property_id)
+    if prop and prop.status == PropertyStatus.sold:
+        prop.status = PropertyStatus.active
+    db.commit()
+    db.refresh(d)
+    log_activity(db, admin.id, "update", "deal", d.id, detail="بازگشت از قطعی به در جریان")
+    db.add(Notification(user_id=d.agent_id, title="معامله به «در جریان» برگشت",
+                        body=f"معامله #{d.id} از حالت قطعی خارج شد.", entity_type="deal", entity_id=d.id))
+    db.commit()
     return _deal_out(db, d)
 
 
@@ -113,6 +151,11 @@ def cancel_deal(deal_id: int, db: Session = Depends(get_db), _admin: User = Depe
     d = db.get(Deal, deal_id)
     if not d:
         raise HTTPException(404, "معامله پیدا نشد")
+    if d.status == DealStatus.finalized:
+        raise HTTPException(400, "معامله‌ی قطعی‌شده قابل لغو نیست — برای جبران، «دریافت از مشاور» ثبت کنید")
+    if d.status == DealStatus.canceled:
+        raise HTTPException(400, "این معامله از قبل لغو شده است")
+
     d.status = DealStatus.canceled
     db.commit()
     return _deal_out(db, d)
@@ -122,13 +165,33 @@ def cancel_deal(deal_id: int, db: Session = Depends(get_db), _admin: User = Depe
 def list_payments(deal_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
     rows = db.query(CommissionPayment).filter(CommissionPayment.deal_id == deal_id).order_by(CommissionPayment.id).all()
     return [PaymentRead(id=p.id, amount=p.amount, paid_date=p.paid_date,
-                        note=p.note, has_receipt=bool(p.receipt_path)) for p in rows]
+                        note=p.note, has_receipt=bool(p.receipt_path),
+                        kind=p.kind) for p in rows]
+
+@router.post("/payments/{payment_id}/receipt")
+def attach_receipt(payment_id: int, receipt: UploadFile = File(...),
+                   db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    p = db.get(CommissionPayment, payment_id)
+    if not p:
+        raise HTTPException(404, "پرداخت پیدا نشد")
+    os.makedirs(RECEIPT_DIR, exist_ok=True)
+    ext = os.path.splitext(receipt.filename)[1] or ".jpg"
+    if p.receipt_path and os.path.exists(p.receipt_path):
+        os.remove(p.receipt_path)  # رسید قبلی جایگزین می‌شود
+    p.receipt_path = os.path.join(RECEIPT_DIR, f"{uuid.uuid4().hex}{ext}")
+    with open(p.receipt_path, "wb") as f:
+        shutil.copyfileobj(receipt.file, f)
+    db.commit()
+    log_activity(db, admin.id, "update", "deal_payment", p.deal_id, detail="رسید پرداخت ثبت/تعویض شد")
+    return {"ok": True}
 
 
+    
 @router.post("/{deal_id}/payments")
 def add_payment(deal_id: int, amount: int = Form(...), paid_date: str | None = Form(None),
-                note: str | None = Form(None), receipt: UploadFile | None = File(None),
-                db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+                note: str | None = Form(None), kind: str = Form("to_agent"),
+                receipt: UploadFile | None = File(None), db=Depends(get_db), admin: User = Depends(require_admin)):
+
     d = db.get(Deal, deal_id)
     if not d:
         raise HTTPException(404, "معامله پیدا نشد")
@@ -140,11 +203,20 @@ def add_payment(deal_id: int, amount: int = Form(...), paid_date: str | None = F
         receipt_path = os.path.join(RECEIPT_DIR, f"{uuid.uuid4().hex}{ext}")
         with open(receipt_path, "wb") as f:
             shutil.copyfileobj(receipt.file, f)
-    p = CommissionPayment(deal_id=deal_id, amount=amount, paid_date=pdate, note=note, receipt_path=receipt_path)
+
+    if kind not in ("to_agent", "from_agent"):
+        raise HTTPException(400, "kind نامعتبر است")
+
+    p = CommissionPayment(deal_id=deal_id, amount=amount, paid_date=pdate, note=note,
+                          receipt_path=receipt_path, kind=kind)
     db.add(p)
     db.commit()
     db.refresh(p)
     log_activity(db, admin.id, "create", "deal_payment", deal_id, detail=f"پرداخت {amount:,} تومان")
+    db.add(Notification(user_id=d.agent_id, title="پرداخت پورسانت ثبت شد",
+                        body=f"برای معامله #{deal_id} پرداخت {amount:,} تومانی ثبت شد.",
+                        entity_type="deal", entity_id=deal_id))
+    db.commit()
     return {"ok": True, "payment_id": p.id}
 
 
@@ -169,17 +241,22 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db), _admin: User
 
 
 def _balances(db: Session) -> list[dict]:
-    agents = db.query(User).filter(User.role == UserRole.agent).all()
+    agents = db.query(User).all()      
+    # agents = db.query(User).filter(User.role == UserRole.agent).all()
     earned = dict(db.query(Deal.agent_id, func.coalesce(func.sum(Deal.commission_amount), 0))
                   .filter(Deal.status == DealStatus.finalized).group_by(Deal.agent_id).all())
-    paid = dict(db.query(Deal.agent_id, func.coalesce(func.sum(CommissionPayment.amount), 0))
-                .join(CommissionPayment, CommissionPayment.deal_id == Deal.id)
-                .group_by(Deal.agent_id).all())
+    to_map = dict(db.query(Deal.agent_id, func.coalesce(func.sum(CommissionPayment.amount), 0))
+                  .join(CommissionPayment, CommissionPayment.deal_id == Deal.id)
+                  .filter(CommissionPayment.kind == "to_agent").group_by(Deal.agent_id).all())
+    from_map = dict(db.query(Deal.agent_id, func.coalesce(func.sum(CommissionPayment.amount), 0))
+                    .join(CommissionPayment, CommissionPayment.deal_id == Deal.id)
+                    .filter(CommissionPayment.kind == "from_agent").group_by(Deal.agent_id).all())
     return [{
         "user_id": u.id, "full_name": u.full_name, "username": u.username,
         "commission_rates": u.commission_rates or {},
-        "earned": int(earned.get(u.id, 0)), "paid": int(paid.get(u.id, 0)),
-        "remaining": int(earned.get(u.id, 0)) - int(paid.get(u.id, 0)),
+        "earned": int(earned.get(u.id, 0)),
+        "paid": int(to_map.get(u.id, 0)) - int(from_map.get(u.id, 0)),
+        "remaining": int(earned.get(u.id, 0)) - (int(to_map.get(u.id, 0)) - int(from_map.get(u.id, 0))),
     } for u in agents]
 
 
@@ -206,3 +283,22 @@ def settlement_pdf(deal_id: int, db: Session = Depends(get_db), _admin: User = D
     pdf = build_deal_settlement_pdf(_deal_out(db, d), agent.full_name if agent else "", payments)
     return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
                              headers={"Content-Disposition": "attachment; filename=settlement.pdf"})
+
+
+
+
+
+from app.services.contract_pdf import build_contract_pdf
+
+@router.get("/{deal_id}/contract-pdf")
+def contract_pdf(deal_id: int, agency_name: str = "آژانس املاک",
+                 db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    d = db.get(Deal, deal_id)
+    if not d:
+        raise HTTPException(404, "معامله پیدا نشد")
+    payments = [{"amount": p.amount, "paid_date": p.paid_date, "note": p.note}
+                for p in db.query(CommissionPayment).filter(CommissionPayment.deal_id == deal_id).all()]
+    agent = db.get(User, d.agent_id)
+    pdf = build_contract_pdf(_deal_out(db, d), agent.full_name if agent else "", payments, agency_name)
+    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
+                             headers={"Content-Disposition": "attachment; filename=contract.pdf"})

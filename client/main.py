@@ -10,6 +10,17 @@ from updater import check_for_update
 from api_client import api_client, ApiError
 from session import register_session_expired_handler, reset_session_expired_flag
 
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QDialog
+
+_orig_dialog_init = QDialog.__init__
+
+def _patched_init(self, *a, **kw):
+    _orig_dialog_init(self, *a, **kw)
+    self.setMinimumSize(430, 380)
+    self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+
+QDialog.__init__ = _patched_init
 
 def main():
     app = QApplication(sys.argv)

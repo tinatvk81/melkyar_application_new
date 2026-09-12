@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QPushButton,
     QLabel, QComboBox, QMessageBox, QHeaderView, QAbstractItemView,
 )
-
+from PySide6.QtWidgets import QInputDialog
 from api_client import api_client, ApiError
 from session import handle_api_error
 from ui.property_form import DEAL_TYPE_LABELS
@@ -31,8 +31,19 @@ class ArchiveTab(QWidget):
         bar = QHBoxLayout()
         bar.addWidget(QLabel("نمایش:"))
         bar.addWidget(self.status_combo)
+        # bar.addWidget(reactivate_btn)
+        # self.load_items()
+
+
         bar.addWidget(reactivate_btn)
+        if api_client.role == "admin":
+            scan_btn = QPushButton("⏳ اسکن فایل‌های قدیمی")
+            scan_btn.clicked.connect(self._scan_expiration)
+            bar.addWidget(scan_btn)
         bar.addStretch()
+
+
+        # bar.addStretch()
         bar.addWidget(refresh_btn)
 
         self.table = QTableWidget()
@@ -45,7 +56,26 @@ class ArchiveTab(QWidget):
         lay = QVBoxLayout(self)
         lay.addLayout(bar)
         lay.addWidget(self.table)
-        self.load_items()
+
+
+        # if api_client.role == "admin":
+        #     scan_btn = QPushButton("⏳ اسکن فایل‌های قدیمی")
+        #     scan_btn.clicked.connect(self._scan_expiration)
+        #     bar.addWidget(scan_btn)
+
+    def _scan_expiration(self):
+        days, ok = QInputDialog.getInt(self, "اسکن فایل‌های قدیمی",
+                                       "فایل‌های فعالِ قدیمی‌تر از چند روز بررسی شوند؟", 90, 7, 730)
+        if not ok:
+            return
+        try:
+            result = api_client.scan_expiration(days)
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            return
+        QMessageBox.information(self, "نتیجه",
+            f"{result['notified']} فایل کاندید انقضا بود و به مالکش اطلاع‌یه رفت.\n"
+            "هر مالک از داخل زنگ اطلاع‌یه تکلیفش را مشخص می‌کند.")
 
     def load_items(self):
         try:

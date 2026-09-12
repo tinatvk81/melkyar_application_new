@@ -7,14 +7,11 @@
 اگر بعداً حجم/پیچیدگی بالا رفت، می‌شود این را به جدول‌های جدا تبدیل کرد (Alembic).
 """
 import enum
-from datetime import datetime, date, timezone
-
 from sqlalchemy import String, Integer, Float, Date, DateTime, Enum, ForeignKey, Boolean, JSON 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
-
+from datetime import date, datetime, timezone
 from app.db.base import Base
-
 
 class DealType(str, enum.Enum):
     sale = "sale"              # فروش
@@ -58,6 +55,9 @@ class Property(Base):
     has_parking: Mapped[bool] = mapped_column(Boolean, default=False)
     owner_name: Mapped[str] = mapped_column(String(128), nullable=True)   # مالک ملک
     owner_phone: Mapped[str] = mapped_column(String(32), nullable=True)
+        # --- انقضای خودکار: مدیر اسکن می‌کند، مالک فایل تصمیم می‌گیرد (انقضا/نگه‌داشتن) ---
+    expire_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expire_review_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     amenities: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
@@ -81,3 +81,5 @@ class Property(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+

@@ -27,6 +27,8 @@ class PersianSpinBox(QSpinBox):
         super().__init__(parent)
         self.setRange(minimum, maximum)
         self.setAccelerated(True)
+        self.setMinimumWidth(110)          # هر دو کلاس
+        self.setStyleSheet("QAbstractSpinBox { min-width: 90px; padding: 6px 8px; }")
 
     def validate(self, text, pos):
         conv = to_english_digits(text)
@@ -48,6 +50,8 @@ class PersianDoubleSpinBox(QDoubleSpinBox):
     def __init__(self, minimum=0.0, maximum=100000.0, decimals=1, suffix="", parent=None):
         super().__init__(parent)
         self.setRange(minimum, maximum)
+        self.setMinimumWidth(110)          # هر دو کلاس
+        self.setStyleSheet("QAbstractSpinBox { min-width: 90px; padding: 6px 8px; }")
         self.setDecimals(decimals)
         if suffix:
             self.setSuffix(suffix)
@@ -209,8 +213,8 @@ class MatchHighlightDelegate(QStyledItemDelegate):
 
 
 class QuickFilterBar(QWidget):
-    """چیپ‌های فیلتر آماده — با هر کلیک سیگنال می‌فرستد"""
     filter_selected = Signal(str, object)
+    custom_preset = Signal(dict)
 
     PRESETS = [
         ("همه", None, None),
@@ -226,15 +230,42 @@ class QuickFilterBar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
+        self._row = QHBoxLayout(self)
+        self._row.setContentsMargins(0, 0, 0, 0)
         for label, key, value in self.PRESETS:
             b = QPushButton(label)
             b.setObjectName("chip")
             b.setCursor(Qt.PointingHandCursor)
             b.clicked.connect(lambda _=False, k=key, v=value: self.filter_selected.emit(k, v))
-            row.addWidget(b)
-        row.addStretch(1)
+            self._row.addWidget(b)
+        self._other_btn = QPushButton("سایر +")
+        self._other_btn.setObjectName("chip")
+        self._other_btn.setCursor(Qt.PointingHandCursor)
+        self._other_btn.clicked.connect(self._open_other)
+        self._row.addWidget(self._other_btn)
+        self._row.addStretch(1)
+        self._load_presets()
+
+    def _load_presets(self):
+        try:
+            from api_client import api_client
+            presets = api_client.list_filter_presets()
+        except Exception:
+            presets = []
+        for p in presets:
+            self._add_custom_chip(p["name"], p["params"])
+
+    def _add_custom_chip(self, name, params):
+        b = QPushButton(name)
+        b.setObjectName("chip")
+        b.setCursor(Qt.PointingHandCursor)
+        b.clicked.connect(lambda _=False, pr=dict(params): self.custom_preset.emit(pr))
+        self._row.insertWidget(self._row.count() - 2, b)
+
+    def _open_other(self):
+        from ui.preset_request_dialog import PresetRequestDialog
+        PresetRequestDialog(on_added=self._add_custom_chip).exec()
+
 
 
 def bind_ctrl_f(window, target: QLineEdit):

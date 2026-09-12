@@ -1,17 +1,19 @@
-from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, Float, or_, and_
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.property import Property, PropertyStatus
 from app.models.user import User, UserRole
 from app.schemas.property import PropertyCreate, PropertyRead, PropertyUpdate, PropertyListResponse
 from app.services.activity_log_service import log_activity
+from app.models.property_image import PropertyImage
 
+from datetime import date, timedelta, datetime, timezone
+from app.api.deps import get_current_user, require_admin   
+from app.models.notification import Notification         
 router = APIRouter(prefix="/properties", tags=["properties"])
 
 
@@ -37,6 +39,23 @@ def _price_expression():
         Property.details["deposit_full"].astext.cast(Float),
         Property.details["monthly_rent"].astext.cast(Float),
     )
+
+def _attach_cover_info(db: Session, response: PropertyListResponse) -> PropertyListResponse:
+    ids = [it.id for it in response.items]
+    if not ids:
+        return response
+    rows = (
+        db.query(PropertyImage.property_id, func.min(PropertyImage.id))
+        .filter(PropertyImage.property_id.in_(ids))
+        .group_by(PropertyImage.property_id)
+        .all()
+    )
+    cover_map = dict(rows)
+    for it in response.items:
+        cid = cover_map.get(it.id)
+        it.cover_image_id = cid
+        it.has_images = cid is not None
+    return response
 
 
 def apply_filters(
@@ -166,7 +185,7 @@ def list_properties(
         min_price=min_price, max_price=max_price, search=search,
     )
     order_clause = _build_order_clause(sort_by, sort_order)
-    return _paginate(q, page, page_size, order_clause=order_clause)
+    return _attach_cover_info(db, _paginate(q, page, page_size, order_clause=order_clause))
 
 
 @router.get("/archived", response_model=PropertyListResponse)
@@ -233,6 +252,66 @@ def check_duplicate(
         "match_kind": "exact" if (ncity and naddr and _norm_text(p.city) == ncity
                                   and _norm_text(p.address) == naddr) else "phone",
     } for p, agent_name in rows]
+
+@router.post("/scan-expiration")
+def scan_expiration(days: int = 90, db: Session = Depends(get_db),
+                    _admin: User = Depends(require_admin)):
+    """
+    مدیر فایل‌های فعال قدیمی را اسکن می‌کند؛ به مالک هرکدام اطلاع‌یه می‌رود
+    تا خودش تصمیم بگیرد: انقضا (به بایگانی) یا نگه‌داشتن (بازبینی بعدی).
+    """
+    cutoff = date.today() - timedelta(days=days)
+    today = date.today()
+    candidates = []
+    for p in db.query(Property).filter(Property.status == PropertyStatus.active).all():
+        never_reviewed = p.expire_review_at is None and p.expire_notified_at is None \
+            and p.created_at is not None and p.created_at.date() <= cutoff
+        review_due = p.expire_review_at is not None and p.expire_review_at <= today
+        if never_reviewed or review_due:
+            candidates.append(p)
+
+    now_utc = datetime.now(timezone.utc)
+    for p in candidates:
+        db.add(Notification(
+            user_id=p.owner_agent_id,
+            title="⏳ فایل قدیمی — تکلیف انقضا",
+            body=f"فایل #{p.id} ({p.city} — {p.address or ''}) بیش از {days} روز فعال مانده. "
+                 f"در زنگ اطلاع‌یه، تکلیفش را مشخص کنید (انقضا یا نگه‌داشتن).",
+            entity_type="expiration", entity_id=p.id,
+        ))
+        p.expire_notified_at = now_utc
+    db.commit()
+    return {"notified": len(candidates)}
+
+
+def _expire_access(db: Session, property_id: int, current_user: User) -> Property:
+    p = db.get(Property, property_id)
+    if not p:
+        raise HTTPException(404, "فایل پیدا نشد")
+    if current_user.role != UserRole.admin and p.owner_agent_id != current_user.id:
+        raise HTTPException(403, "فقط مالک فایل یا مدیر مجاز است")
+    return p
+
+
+@router.post("/{property_id}/expire-confirm")
+def expire_confirm(property_id: int, db: Session = Depends(get_db),
+                   current_user: User = Depends(get_current_user)):
+    """تأیید انقضا توسط مالک فایل → به بایگانی (غیرفعال) می‌رود."""
+    p = _expire_access(db, property_id, current_user)
+    p.status = PropertyStatus.inactive
+    db.commit()
+    log_activity(db, current_user.id, "deactivate", "property", p.id, detail=f"انقضای خودکار — {p.city}")
+    return {"ok": True}
+
+
+@router.post("/{property_id}/expire-keep")
+def expire_keep(property_id: int, days: int = 90, db: Session = Depends(get_db),
+                current_user: User = Depends(get_current_user)):
+    """نگه‌داشتن فایل → بعد از `days` روز دیگر همان سؤال پرسیده می‌شود."""
+    p = _expire_access(db, property_id, current_user)
+    p.expire_review_at = date.today() + timedelta(days=days)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/{property_id}/reactivate", response_model=PropertyRead)

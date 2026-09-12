@@ -1,12 +1,11 @@
 import io
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
-
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-
+from app.models.deal import Deal, DealStatus
 from app.api.deps import get_current_user, require_admin
 from app.api.routes.properties import _base_query, apply_filters, _build_order_clause
 from app.db.session import get_db
@@ -219,3 +218,54 @@ def trigger_sms_reminders(db: Session = Depends(get_db), _admin: User = Depends(
     """
     from app.services.reminder_job import run_daily_reminder_job
     return run_daily_reminder_job(db)
+
+
+
+@router.get("/reports/deals-chart")
+def deals_chart(months: int = 12, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """معامله‌های قطعی‌شده به تفکیک ماه شمسی (برای نمودار داشبورد مدیر)."""
+    import jdatetime
+    buckets: dict = {}
+    for d in db.query(Deal).filter(Deal.status == DealStatus.finalized).all():
+        if not d.finalized_at:
+            continue
+        j = jdatetime.datetime.fromgregorian(datetime=d.finalized_at)
+        key = f"{j.year}-{j.month:02d}"
+        b = buckets.setdefault(key, {"count": 0, "amount": 0})
+        b["count"] += 1
+        b["amount"] += d.deal_amount
+
+    today = jdatetime.date.today()
+    y, m = today.year, today.month
+    keys = []
+    for _ in range(max(1, min(months, 24))):
+        keys.insert(0, f"{y}-{m:02d}")
+        m -= 1
+        if m == 0:
+            y -= 1
+            m = 12
+    return [{"month": k, "count": buckets.get(k, {}).get("count", 0),
+             "amount": buckets.get(k, {}).get("amount", 0)} for k in keys]
+    """معامله‌های قطعی‌شده به تفکیک ماه شمسی (برای نمودار داشبورد مدیر)."""
+    import jdatetime
+    buckets: dict = {}
+    for d in db.query(Deal).filter(Deal.status == DealStatus.finalized).all():
+        if not d.finalized_at:
+            continue
+        j = jdatetime.datetime.fromgregorian(datetime=d.finalized_at)
+        key = f"{j.year}-{j.month:02d}"
+        b = buckets.setdefault(key, {"count": 0, "amount": 0})
+        b["count"] += 1
+        b["amount"] += d.deal_amount
+
+    today = jdatetime.date.today()
+    y, m = today.year, today.month
+    keys = []
+    for _ in range(max(1, min(months, 24))):
+        keys.insert(0, f"{y}-{m:02d}")
+        m -= 1
+        if m == 0:
+            y -= 1
+            m = 12
+    return [{"month": k, "count": buckets.get(k, {}).get("count", 0),
+             "amount": buckets.get(k, {}).get("amount", 0)} for k in keys]

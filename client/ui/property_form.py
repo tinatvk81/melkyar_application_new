@@ -127,12 +127,9 @@ class PropertyFormDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_row = QHBoxLayout()
 
-        if self.property_data:
-            # گالری فقط برای فایل‌های از قبل ذخیره‌شده در دسترس است، چون آپلود عکس
-            # به property_id نیاز دارد که برای فایل جدید هنوز وجود ندارد.
-            gallery_btn = QPushButton("گالری تصاویر")
-            gallery_btn.clicked.connect(self.handle_open_gallery)
-            btn_row.addWidget(gallery_btn)
+        gallery_btn = QPushButton("گالری تصاویر")
+        gallery_btn.clicked.connect(self.handle_open_gallery)
+        btn_row.addWidget(gallery_btn)
 
         btn_row.addWidget(save_btn)
         btn_row.addWidget(cancel_btn)
@@ -263,9 +260,14 @@ class PropertyFormDialog(QDialog):
         }
 
     def handle_open_gallery(self):
+        if not self.property_data:
+            QMessageBox.information(
+                self, "گالری تصاویر",
+                "برای افزودن عکس، ابتدا باید فایل ذخیره شود (عکس به شناسه‌ی فایل وصل می‌شود).\n"
+                "دکمه‌ی «ذخیره» را بزنید — بلافاصله پس از ذخیره، پنجره‌ی گالری باز می‌شود.")
+            return
         label = self.property_data.get("address") or self.property_data.get("city") or ""
-        dialog = PropertyGalleryDialog(self.property_data["id"], property_label=label)
-        dialog.exec()
+        PropertyGalleryDialog(self.property_data["id"], property_label=label).exec()
 
     def handle_save(self):
         if not self.city_input.text().strip():
@@ -307,7 +309,7 @@ class PropertyFormDialog(QDialog):
                    "\n\nبا این حال فایل جدید ثبت شود؟")
             if QMessageBox.question(self, "هشدار فایل مشابه", msg) != QMessageBox.Yes:
                 return
-                
+
         created = None
         try:
             if self.property_data:

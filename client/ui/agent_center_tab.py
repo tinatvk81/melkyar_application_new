@@ -184,7 +184,6 @@ class AgentDetailDialog(QDialog):
         self.paid_lbl.setText(f"{mine['paid']:,} تومان")
         self.remaining_lbl.setText(f"{mine['remaining']:,} تومان")
 
-
 class AgentCenterTab(QWidget):
     """مرکز مدیریت مشاوران: جدول کاربران + پروندهٔ کامل با دابل‌کلیک."""
 
@@ -204,8 +203,13 @@ class AgentCenterTab(QWidget):
         add_btn = QPushButton("افزودن حساب جدید")
         add_btn.setObjectName("primary")
         add_btn.clicked.connect(self.handle_add_new)
-        self.toggle_btn = QPushButton("غیرفعال‌سازی حساب انتخاب‌شده")
-        self.toggle_btn.clicked.connect(self.handle_toggle_active)
+
+        self.activate_btn = QPushButton("فعال‌سازی حساب")
+        self.activate_btn.clicked.connect(self.handle_activate)
+
+        self.deactivate_btn = QPushButton("غیرفعال‌سازی حساب")
+        self.deactivate_btn.clicked.connect(self.handle_deactivate)
+
         reset_pw_btn = QPushButton("ریست رمز عبور")
         reset_pw_btn.clicked.connect(self.handle_reset_password)
         edit_phone_btn = QPushButton("ویرایش تلفن")
@@ -215,11 +219,16 @@ class AgentCenterTab(QWidget):
         refresh_btn = QPushButton("به‌روزرسانی")
         refresh_btn.clicked.connect(self.load_users)
 
-        self.table.itemSelectionChanged.connect(self._update_toggle_label)
+        # فعال/غیرفعال شدن دکمه‌ها بر اساس انتخاب فعلی
+        self.table.itemSelectionChanged.connect(self._update_buttons)
 
         bar = QHBoxLayout()
-        for w in (add_btn, self.toggle_btn, reset_pw_btn, edit_phone_btn, rates_btn):
-            bar.addWidget(w)
+        bar.addWidget(add_btn)
+        bar.addWidget(self.activate_btn)
+        bar.addWidget(self.deactivate_btn)
+        bar.addWidget(reset_pw_btn)
+        bar.addWidget(edit_phone_btn)
+        bar.addWidget(rates_btn)
         bar.addStretch()
         bar.addWidget(refresh_btn)
 
@@ -245,18 +254,13 @@ class AgentCenterTab(QWidget):
             self.table.setItem(r, 3, QTableWidgetItem("بله" if u["is_active"] else "خیر"))
             self.table.setItem(r, 4, QTableWidgetItem(u.get("phone") or ""))
             self.table.setItem(r, 5, QTableWidgetItem(rates_txt))
-        self._update_toggle_label()
+        self._update_buttons()
 
     def _selected_user(self):
         row = self.table.currentRow()
         if row < 0 or row >= len(self._users_by_row):
             return None
         return self._users_by_row[row]
-
-    def _update_toggle_label(self):
-        u = self._selected_user()
-        self.toggle_btn.setText("فعال‌سازی حساب انتخاب‌شده" if (u and not u["is_active"])
-                                else "غیرفعال‌سازی حساب انتخاب‌شده")
 
     def _open_detail(self):
         u = self._selected_user()
@@ -267,19 +271,29 @@ class AgentCenterTab(QWidget):
     def handle_add_new(self):
         UserFormDialog(on_created=self.load_users).exec()
 
-    def handle_toggle_active(self):
+    def _update_buttons(self):
+        u = self._selected_user()
+        self.activate_btn.setEnabled(bool(u) and not u["is_active"])
+        self.deactivate_btn.setEnabled(bool(u) and u["is_active"])
+
+    def handle_activate(self):
+        u = self._selected_user()
+        if u:
+            try:
+                api_client.activate_user(u["id"])
+            except ApiError as e:
+                handle_api_error(self, e, "خطا")
+                return
+            self.load_users()
+
+    def handle_deactivate(self):
         u = self._selected_user()
         if not u:
-            QMessageBox.information(self, "توجه", "ابتدا یک کاربر را انتخاب کنید.")
             return
-        if u["is_active"]:
-            if QMessageBox.question(self, "تایید", f"حساب «{u['username']}» غیرفعال شود؟") != QMessageBox.Yes:
-                return
-            action = api_client.deactivate_user
-        else:
-            action = api_client.activate_user
+        if QMessageBox.question(self, "تایید", f"حساب «{u['username']}» غیرفعال شود؟") != QMessageBox.Yes:
+            return
         try:
-            action(u["id"])
+            api_client.deactivate_user(u["id"])
         except ApiError as e:
             handle_api_error(self, e, "خطا")
             return

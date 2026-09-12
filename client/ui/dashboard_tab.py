@@ -1,9 +1,8 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QFrame, QPushButton, QHBoxLayout
-
+from ui.charts import BarChart, HBarChart
 from api_client import api_client, ApiError
 from session import handle_api_error
-
 
 class StatCard(QFrame):
     clicked = Signal()   # ← این خط را جا انداخته بودی
@@ -42,12 +41,12 @@ class StatCard(QFrame):
 
 
 class DashboardTab(QWidget):
-    def __init__(self, on_navigate=None):   # ← پارامتر باید همین‌جا باشد
+    def __init__(self, on_navigate=None):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
         self._on_navigate = on_navigate
 
-        self.total_card = StatCard("کل فایل‌های فعال", color="#8b94ff")
+        self.total_card = StatCard("کل فایل‌های فعال", color="#f5a623")
         self.sale_card = StatCard("فروش", color="#7dd3fc")
         self.presale_card = StatCard("پیش‌خرید", color="#c4b5fd")
         self.rent_card = StatCard("اجاره", color="#86efac")
@@ -55,12 +54,13 @@ class DashboardTab(QWidget):
         self.new_week_card = StatCard("فایل جدید این هفته", color="#6ee7b7")
         self.urgent_card = StatCard("قرارداد فوری (زیر ۷ روز)", color="#fca5a5")
         self.upcoming_card = StatCard("قرارداد رو‌به‌اتمام (زیر ۳۰ روز)", color="#fdba74")
+        self.images_card = StatCard("فایل‌های عکس‌دار", color="#fbb63f")
         self.agents_card = StatCard("تعداد مشاوران", color="#a5b4fc")
         self.activity_today_card = StatCard("فعالیت امروز", color="#93c5fd")
 
         role_fa = "مدیر" if api_client.role == "admin" else "مشاور"
         welcome = QLabel(f"👋 خوش آمدید، {api_client.full_name} ({role_fa})")
-        welcome.setStyleSheet("font-size: 14px; font-weight: bold; color: #a5b4fc; background: transparent;")
+        welcome.setStyleSheet("font-size: 14px; font-weight: bold; color: #f5a623; background: transparent;")
 
         self.total_card.clicked.connect(lambda: self._go("list"))
         self.sale_card.clicked.connect(lambda: self._go("list", "sale"))
@@ -82,9 +82,26 @@ class DashboardTab(QWidget):
         grid.addWidget(self.new_week_card, 1, 0)
         grid.addWidget(self.urgent_card, 1, 1)
         grid.addWidget(self.upcoming_card, 1, 2)
+        # فایل‌های عکس‌دار: همه‌ی نقش‌ها
+        grid.addWidget(self.images_card, 1, 3)
         if api_client.role == "admin":
-            grid.addWidget(self.agents_card, 1, 3)
-            grid.addWidget(self.activity_today_card, 1, 4)
+            grid.addWidget(self.agents_card, 1, 4)
+            grid.addWidget(self.activity_today_card, 1, 5)
+
+        # --- نمودارها (فقط مدیر) ---
+        self.charts_frame = None
+        if api_client.role == "admin":
+            self.chart_deals = BarChart(money=False)
+            self.chart_agents = HBarChart()
+            w1 = QWidget(); b1 = QVBoxLayout(w1)
+            b1.addWidget(QLabel("📈 معامله‌های قطعی‌شده (۱۲ ماه اخیر)"))
+            b1.addWidget(self.chart_deals)
+            w2 = QWidget(); b2 = QVBoxLayout(w2)
+            b2.addWidget(QLabel("👥 پورسانت قطعی‌شده هر مشاور"))
+            b2.addWidget(self.chart_agents)
+            self.charts_frame = QHBoxLayout()
+            self.charts_frame.addWidget(w1, 1)
+            self.charts_frame.addWidget(w2, 1)
 
         refresh_btn = QPushButton("به‌روزرسانی")
         refresh_btn.clicked.connect(self.load_summary)
@@ -96,9 +113,10 @@ class DashboardTab(QWidget):
         layout.addWidget(welcome)
         layout.addLayout(top_bar)
         layout.addLayout(grid)
+        if self.charts_frame:
+            layout.addLayout(self.charts_frame)
         layout.addStretch()
         self.setLayout(layout)
-
         self.load_summary()
 
     def load_summary(self):
@@ -122,6 +140,25 @@ class DashboardTab(QWidget):
             self.agents_card.set_value(data["total_agents"])
         if "activity_today" in data:
             self.activity_today_card.set_value(data["activity_today"])
+
+        if api_client.role == "admin":
+            try:
+                chart = api_client.get_deals_chart(12)
+                self.chart_deals.set_data([c["month"][5:] for c in chart], [c["count"] for c in chart])
+            except ApiError:
+                pass
+            try:
+                bal = api_client.get_balances()
+                rows = [(b["full_name"], b["earned"]) for b in bal if b["earned"] > 0]
+                self.chart_agents.set_data(rows or [("—", 0)])
+            except ApiError:
+                pass
+
+        try:
+            resp = api_client.list_properties(page=1, page_size=200)
+            self.images_card.set_value(sum(1 for p in resp["items"] if p.get("has_images")))
+        except ApiError:
+            self.images_card.set_value("—")
 
     def _go(self, target, deal_type=None):
         if self._on_navigate:

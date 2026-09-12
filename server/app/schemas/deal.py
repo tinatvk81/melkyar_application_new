@@ -27,6 +27,7 @@ class PaymentRead(BaseModel):
     amount: int
     paid_date: Optional[date]
     note: Optional[str]
+    kind: str = "to_agent"
     has_receipt: bool
 
 

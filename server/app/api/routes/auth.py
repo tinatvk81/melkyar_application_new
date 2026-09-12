@@ -54,4 +54,4 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
     token = create_access_token(user_id=user.id, role=user.role.value, token_version=user.token_version)
     log_activity(db, user.id, "login", "user", user.id)
-    return Token(access_token=token, role=user.role.value, full_name=user.full_name)
+    return Token(access_token=token, role=user.role.value, full_name=user.full_name, user_id=user.id)

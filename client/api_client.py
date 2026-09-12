@@ -50,6 +50,7 @@ class ApiClient:
         self.token = data["access_token"]
         self.role = data["role"]
         self.full_name = data["full_name"]
+        self.user_id = data.get("user_id")
         return data
 
     def logout(self):
@@ -309,8 +310,8 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
-    def add_deal_payment(self, deal_id: int, amount: int, paid_date=None, note=None, receipt_path=None):
-        data = {"amount": str(amount)}
+    def add_deal_payment(self, deal_id: int, amount: int, paid_date=None, note=None, receipt_path=None, kind="to_agent"):
+        data = {"amount": str(amount), "kind": kind}
         if paid_date: data["paid_date"] = paid_date
         if note: data["note"] = note
         files = {}
@@ -326,6 +327,7 @@ class ApiClient:
             if f: f.close()
         self._raise_for_status(resp)
         return resp.json()
+
 
     def delete_deal_payment(self, payment_id: int):
         resp = requests.delete(f"{self.server_url}/deals/payments/{payment_id}", headers=self._headers, timeout=15)
@@ -356,7 +358,146 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
+
+
+    # ---------- درخواست مشتری ----------
+    def list_client_requests(self, status=None):
+        params = {"status": status} if status else {}
+        resp = requests.get(f"{self.server_url}/client-requests/", params=params, headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def create_client_request(self, payload: dict):
+        resp = requests.post(f"{self.server_url}/client-requests/", json=payload, headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def update_client_request(self, request_id: int, payload: dict):
+        resp = requests.put(f"{self.server_url}/client-requests/{request_id}", json=payload, headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def delete_client_request(self, request_id: int):
+        resp = requests.delete(f"{self.server_url}/client-requests/{request_id}", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def get_request_matches(self, request_id: int):
+        resp = requests.get(f"{self.server_url}/client-requests/{request_id}/matches", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
         
+
+    # ---------- پیگیری روزمره و اطلاع‌یه ----------
+    def list_follow_ups(self, when: str = "all"):
+        resp = requests.get(f"{self.server_url}/follow-ups/", params={"when": when},
+                            headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def create_follow_up(self, payload: dict):
+        resp = requests.post(f"{self.server_url}/follow-ups/", json=payload, headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def update_follow_up(self, fid: int, payload: dict):
+        resp = requests.put(f"{self.server_url}/follow-ups/{fid}", json=payload, headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def follow_up_done(self, fid: int):
+        resp = requests.post(f"{self.server_url}/follow-ups/{fid}/done", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def delete_follow_up(self, fid: int):
+        resp = requests.delete(f"{self.server_url}/follow-ups/{fid}", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def list_notifications(self):
+        resp = requests.get(f"{self.server_url}/notifications/", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def unread_count(self) -> dict:
+        resp = requests.get(f"{self.server_url}/notifications/unread-count", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def mark_notification_read(self, nid: int):
+        resp = requests.post(f"{self.server_url}/notifications/{nid}/read", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def mark_all_notifications_read(self):
+        resp = requests.post(f"{self.server_url}/notifications/read-all", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+
+    # ---------- فیلترهای آماده (سایر +) ----------
+    def list_filter_presets(self):
+        resp = requests.get(f"{self.server_url}/filter-presets/", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def create_filter_preset(self, name: str, params: dict):
+        resp = requests.post(f"{self.server_url}/filter-presets/",
+                             json={"name": name, "params": params}, headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def pending_filter_presets(self):
+        resp = requests.get(f"{self.server_url}/filter-presets/pending", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def approve_filter_preset(self, preset_id: int):
+        resp = requests.post(f"{self.server_url}/filter-presets/{preset_id}/approve", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def delete_filter_preset(self, preset_id: int):
+        resp = requests.delete(f"{self.server_url}/filter-presets/{preset_id}", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    # ---------- اطلاع‌یه‌های مشاوران (فقط مدیر) ----------
+    def list_agents_for_notifications(self):
+        resp = requests.get(f"{self.server_url}/notifications/admin-agents", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def list_notifications_by_user(self, user_id: int):
+        resp = requests.get(f"{self.server_url}/notifications/by-user/{user_id}", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+        
+    # ---------- چت داخلی ----------
+    def chat_contacts(self):
+        resp = requests.get(f"{self.server_url}/chat/contacts", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def chat_conversation(self, other_id: int):
+        resp = requests.get(f"{self.server_url}/chat/with/{other_id}", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def chat_send(self, receiver_id: int, body: str):
+        resp = requests.post(f"{self.server_url}/chat/send",
+                             json={"receiver_id": receiver_id, "body": body},
+                             headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def chat_unread_total(self):
+        resp = requests.get(f"{self.server_url}/chat/unread-total", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+
     @staticmethod
     def _raise_for_status(resp: requests.Response):
         if resp.status_code >= 400:
@@ -365,6 +506,82 @@ class ApiClient:
             except Exception:
                 detail = "خطای نامشخص"
             raise ApiError(detail, resp.status_code)
+
+
+    def update_deal(self, deal_id: int, payload: dict):
+        resp = requests.put(f"{self.server_url}/deals/{deal_id}", json=payload, headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+
+    def unfinalize_deal(self, deal_id: int):
+        resp = requests.post(f"{self.server_url}/deals/{deal_id}/unfinalize", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def get_deals_chart(self, months: int = 12):
+        resp = requests.get(f"{self.server_url}/reports/deals-chart",
+                            params={"months": months}, headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def scan_expiration(self, days: int = 90):
+        resp = requests.post(f"{self.server_url}/properties/scan-expiration",
+                             params={"days": days}, headers=self._headers, timeout=30)
+        self._raise_for_status(resp)
+        return resp.json()
+
+
+    def upload_payment_receipt(self, payment_id: int, receipt_path: str):
+        with open(receipt_path, "rb") as f:
+            fname = receipt_path.split("/")[-1].split("\\")[-1]
+            resp = requests.post(
+                f"{self.server_url}/deals/payments/{payment_id}/receipt",
+                files={"receipt": (fname, f, "image/jpeg")},
+                headers=self._headers, timeout=60)
+        self._raise_for_status(resp)
+        return resp.json()
+
+
+    def expire_confirm(self, property_id: int):
+        resp = requests.post(f"{self.server_url}/properties/{property_id}/expire-confirm",
+                             headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def expire_keep(self, property_id: int, days: int = 90):
+        resp = requests.post(f"{self.server_url}/properties/{property_id}/expire-keep",
+                             params={"days": days}, headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+
+    def download_contract_pdf(self, deal_id: int, save_path: str):
+        self._download_to_file(f"{self.server_url}/deals/{deal_id}/contract-pdf", save_path)
+
+
+    def list_delete_requests(self):
+        resp = requests.get(f"{self.server_url}/filter-presets/delete-requests", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def request_delete_filter_preset(self, preset_id: int):
+        resp = requests.post(f"{self.server_url}/filter-presets/{preset_id}/request-delete",
+                             headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def approve_delete_filter_preset(self, preset_id: int):
+        resp = requests.post(f"{self.server_url}/filter-presets/{preset_id}/approve-delete",
+                             headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def reject_delete_filter_preset(self, preset_id: int):
+        resp = requests.post(f"{self.server_url}/filter-presets/{preset_id}/reject-delete",
+                             headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
 
 
 api_client = ApiClient()  # نمونه‌ی مشترک در کل برنامه‌ی کلاینت

@@ -1,10 +1,14 @@
 from PySide6.QtCore import Qt
-
+from PySide6.QtWidgets import QListWidget
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
-    QFileDialog, QComboBox, QHeaderView
+    QFileDialog, QComboBox, QHeaderView, QStackedWidget
 )
+from ui.chat_tab import ChatTab
+from ui.client_requests_tab import ClientRequestsTab
+from ui.follow_ups_tab import FollowUpsTab, NotificationsDialog
+from PySide6.QtCore import Qt, QTimer
 from ui.widgets import QuickFilterBar, MatchHighlightDelegate, bind_ctrl_f
 from api_client import api_client, ApiError
 from session import handle_api_error
@@ -12,7 +16,8 @@ from ui.property_form import PropertyFormDialog, DEAL_TYPE_LABELS
 from ui.import_excel_dialog import ImportExcelDialog
 from ui.user_form_dialog import UserFormDialog, ROLE_LABELS
 from ui.property_filter_panel import PropertyFilterPanel
-# from ui.archive_dialog import ArchivePropertiesDialog
+from PySide6.QtGui import QPixmap
+from ui.property_gallery_dialog import PropertyGalleryDialog
 from ui.dashboard_tab import DashboardTab
 from ui.deals_tab import DealsTab
 from ui.archive_tab import ArchiveTab
@@ -34,19 +39,17 @@ class PropertyListTab(QWidget):
 
 
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
-            ["شهر", "نوع معامله", "متراژ", "اتاق", "آدرس", "تاریخ پایان قرارداد"]
+            ["عکس", "شهر", "نوع معامله", "متراژ", "اتاق", "آدرس", "تاریخ پایان قرارداد"]
         )
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.doubleClicked.connect(self.handle_edit_selected)
-
-                # ستون‌ها با محتوا هماهنگ می‌شوند و ستون «آدرس» فضای باقی‌مانده را می‌گیرد
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.Stretch)   # ستون آدرس
-        self.table.verticalHeader().setDefaultSectionSize(34)  # ردیف‌های کمی بلندتر و خواناتر
+
+        header.setSectionResizeMode(5, QHeaderView.Stretch)   # آدرس حالا ستون ۵ است
+        header.setSectionResizeMode(0, QHeaderView.Fixed)
+        self.table.setColumnWidth(0, 64)
+        self.table.verticalHeader().setDefaultSectionSize(56)
 
 
         self.quick_bar = QuickFilterBar()
@@ -62,6 +65,8 @@ class PropertyListTab(QWidget):
 
         edit_btn = QPushButton("ویرایش فایل انتخاب‌شده")
         edit_btn.clicked.connect(self.handle_edit_selected)
+
+
 
         deactivate_btn = QPushButton("غیرفعال کردن فایل انتخاب‌شده")
         deactivate_btn.clicked.connect(self.handle_deactivate_selected)
@@ -91,6 +96,9 @@ class PropertyListTab(QWidget):
         # top_bar.addWidget(archive_btn)
         top_bar.addStretch()
         top_bar.addWidget(refresh_btn)
+        view_img_btn = QPushButton("پیش‌نمایش عکس")
+        view_img_btn.clicked.connect(self.handle_view_images)
+        top_bar.addWidget(view_img_btn)
 
         # --- نوار صفحه‌بندی: بدون این، فایل‌های بعد از یک تعداد مشخص بی‌صدا از دید پنهان می‌ماندند ---
         self.prev_page_btn = QPushButton("◀ صفحه‌ی قبل")
@@ -175,15 +183,49 @@ class PropertyListTab(QWidget):
 
         self._properties_by_row = properties
         self._delegate.set_term(self.filter_panel.search_input.text())
-
         self.table.setRowCount(len(properties))
         for row, p in enumerate(properties):
-            self.table.setItem(row, 0, QTableWidgetItem(p.get("city", "")))
-            self.table.setItem(row, 1, QTableWidgetItem(DEAL_TYPE_LABELS.get(p.get("deal_type"), p.get("deal_type", ""))))
-            self.table.setItem(row, 2, QTableWidgetItem(str(p.get("area_m2") or "")))
-            self.table.setItem(row, 3, QTableWidgetItem(str(p.get("rooms") or "")))
-            self.table.setItem(row, 4, QTableWidgetItem(p.get("address") or ""))
-            self.table.setItem(row, 5, QTableWidgetItem(p.get("contract_end_date") or ""))
+            item0 = QTableWidgetItem()
+            if p.get("cover_image_id"):
+                pm = self._get_thumb(p["id"], p["cover_image_id"])
+                if pm:
+                    item0.setData(Qt.DecorationRole, pm)
+            self.table.setItem(row, 0, item0)
+            self.table.setItem(row, 1, QTableWidgetItem(p.get("city", "")))
+            self.table.setItem(row, 2, QTableWidgetItem(DEAL_TYPE_LABELS.get(p.get("deal_type"), "")))
+            self.table.setItem(row, 3, QTableWidgetItem(str(p.get("area_m2") or "")))
+            self.table.setItem(row, 4, QTableWidgetItem(str(p.get("rooms") or "")))
+            self.table.setItem(row, 5, QTableWidgetItem(p.get("address") or ""))
+            self.table.setItem(row, 6, QTableWidgetItem(p.get("contract_end_date") or ""))
+
+
+
+    def _get_thumb(self, prop_id, image_id):
+        if not hasattr(self, "_pix_cache"):
+            self._pix_cache = {}
+        if image_id in self._pix_cache:
+            return self._pix_cache[image_id]
+        try:
+            data = api_client.get_property_image_bytes(prop_id, image_id)
+        except ApiError:
+            return None
+        pm = QPixmap()
+        pm.loadFromData(data)
+        pm = pm.scaled(52, 52, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self._pix_cache[image_id] = pm
+        return pm
+
+    def handle_view_images(self):
+        prop = self._selected_property()
+        if not prop:
+            QMessageBox.information(self, "توجه", "ابتدا یک فایل انتخاب کنید.")
+            return
+        if not prop.get("has_images"):
+            QMessageBox.information(self, "توجه", "این فایل عکس ندارد.")
+            return
+        PropertyGalleryDialog(prop["id"],
+                              property_label=prop.get("address") or prop.get("city") or "").exec()
+        
 
     def _selected_property(self):
         row = self.table.currentRow()
@@ -275,38 +317,55 @@ class PropertyListTab(QWidget):
 
 
 class RenewalsTab(QWidget):
-    """قراردادهای رو‌به‌اتمام (ماژول یادآوری)."""
-
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
+        self._items = []
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["شهر", "آدرس", "تاریخ پایان قرارداد", "تلفن مالک"])
-
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["شهر", "آدرس", "نام مالک", "تاریخ پایان قرارداد", "تلفن مالک"])
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.cellDoubleClicked.connect(self._on_cell_double_click)
+        hint = QLabel("برای پیگیری و ویرایش فایل، روی ردیف دابل‌کلیک کنید.")
         refresh_btn = QPushButton("به‌روزرسانی")
         refresh_btn.clicked.connect(self.load_renewals)
+        bar = QHBoxLayout()
+        bar.addWidget(hint)
+        bar.addStretch()
+        bar.addWidget(refresh_btn)
 
         layout = QVBoxLayout()
-        layout.addWidget(refresh_btn)
+        layout.addLayout(bar)
         layout.addWidget(self.table)
         self.setLayout(layout)
         self.load_renewals()
 
+
+    def _on_cell_double_click(self, row, column):
+        if 0 <= row < len(self._items):
+            PropertyFormDialog(property_data=self._items[row], on_saved=self.load_renewals).exec()
+
+
+
     def load_renewals(self):
         try:
-            items = api_client.upcoming_renewals(days=30)
+            self._items = api_client.upcoming_renewals(days=30)
         except ApiError as e:
             handle_api_error(self, e, "خطا")
             return
-        self.table.setRowCount(len(items))
-        for row, p in enumerate(items):
+        self.table.setRowCount(len(self._items))
+        for row, p in enumerate(self._items):
             self.table.setItem(row, 0, QTableWidgetItem(p.get("city", "")))
             self.table.setItem(row, 1, QTableWidgetItem(p.get("address") or ""))
-            self.table.setItem(row, 2, QTableWidgetItem(p.get("contract_end_date") or ""))
-            self.table.setItem(row, 3, QTableWidgetItem(p.get("owner_phone") or ""))
+            self.table.setItem(row, 2, QTableWidgetItem(p.get("owner_name") or ""))
+            self.table.setItem(row, 3, QTableWidgetItem(p.get("contract_end_date") or ""))
+            self.table.setItem(row, 4, QTableWidgetItem(p.get("owner_phone") or ""))
 
-
+    def _open_selected(self):
+        row = self.table.currentRow()
+        if 0 <= row < len(self._items):
+            PropertyFormDialog(property_data=self._items[row], on_saved=self.load_renewals).exec()
 
 
 
@@ -418,32 +477,77 @@ class ActivityLogTab(QWidget):
             self.load_logs()
 
 
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
         self.setWindowTitle(f"سامانه‌ی مدیریت فایل‌های ملکی — {api_client.full_name}")
-        self.resize(1000, 650)
+        self.resize(1150, 720)
 
-        tabs = QTabWidget()
+        # --- زنگ اطلاع‌یه (بالای سایدبار) ---
+        self._bell_btn = QPushButton("🔔 اطلاع‌یه‌ها")
+        self._bell_btn.setObjectName("bellLabel")
+        self._bell_btn.setCursor(Qt.PointingHandCursor)
+        self._bell_btn.clicked.connect(self._open_notifications)
+
+        # --- سایدبار + صفحه‌ها ---
+        self._sidebar = QListWidget()
+        self._sidebar.setObjectName("sideNav")
+        self._sidebar.setFixedWidth(210)
+        self._stack = QStackedWidget()
         self._index = {}
+
+        side_title = QLabel("ملک‌یار")
+        side_title.setObjectName("sideTitle")
+        side_title.setAlignment(Qt.AlignCenter)
+
         self._list_tab = PropertyListTab()
-        self._index["dashboard"] = tabs.addTab(DashboardTab(on_navigate=self._dashboard_navigate), "داشبورد")
-        self._index["list"] = tabs.addTab(self._list_tab, "فهرست فایل‌ها")
-        self._renewals_tab_index = tabs.count()
-        self._index["renewals"] = tabs.addTab(RenewalsTab(), "قراردادهای رو‌به‌اتمام")
-        self._index["archive"] = tabs.addTab(ArchiveTab(), "بایگانی")
-
+        pages = [
+            ("🏠  داشبورد", DashboardTab(on_navigate=self._dashboard_navigate), "dashboard"),
+            ("🏢  فهرست فایل‌ها", self._list_tab, "list"),
+            ("📅  قراردادهای رو‌به‌اتمام", RenewalsTab(), "renewals"),
+            ("🗄️  بایگانی", ArchiveTab(), "archive"),
+            ("🙋  درخواست مشتری‌ها", ClientRequestsTab(), "requests"),
+            ("✅  پیگیری روزمره", FollowUpsTab(), "followups"),
+        ]
         if api_client.role == "admin":
-            self._index["agents"] = tabs.addTab(AgentCenterTab(), "مشاوران و مدیریت")
-            self._index["deals"] = tabs.addTab(DealsTab(), "حسابداری پورسانت")
-            self._index["activity"] = tabs.addTab(ActivityLogTab(), "تاریخچه‌ی فعالیت‌ها")
+            pages += [
+                ("👥  مشاوران و مدیریت", AgentCenterTab(), "agents"),
+                ("💰  حسابداری پورسانت", DealsTab(), "deals"),
+                ("🕘  تاریخچه‌ی فعالیت‌ها", ActivityLogTab(), "activity"),
+            ]
 
-        self.tabs = tabs
-        self.setCentralWidget(tabs)
+        for label, widget, key in pages:
+            self._stack.addWidget(widget)
+            self._sidebar.addItem(label)
+            self._index[key] = self._sidebar.count() - 1
+
+        self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)
+        self._sidebar.setCurrentRow(self._index["dashboard"])
+        self._renewals_tab_index = self._index["renewals"]  # سازگاری با main.py
+
+        side_lay = QVBoxLayout()
+        side_lay.setContentsMargins(0, 8, 0, 8)
+        side_lay.addWidget(side_title)
+        side_lay.addWidget(self._bell_btn)
+        side_lay.addWidget(self._sidebar, 1)
+
+        central = QWidget()
+        lay = QHBoxLayout(central)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addLayout(side_lay)
+        lay.addWidget(self._stack, 1)
+        self.setCentralWidget(central)
+
+        self._notif_timer = QTimer(self)
+        self._notif_timer.timeout.connect(self._refresh_bell)
+        self._notif_timer.start(60_000)
+        QTimer.singleShot(800, self._refresh_bell)
 
     def switch_to_renewals_tab(self):
-        self.tabs.setCurrentIndex(self._renewals_tab_index)
+        self._sidebar.setCurrentRow(self._index["renewals"])
 
     def _dashboard_navigate(self, target, deal_type=None):
         if target == "list":
@@ -451,6 +555,21 @@ class MainWindow(QMainWindow):
                 fp = self._list_tab.filter_panel
                 fp.deal_type_combo.setCurrentIndex(fp.deal_type_combo.findData(deal_type))
                 self._list_tab._handle_apply_filters(fp.get_filters())
-            self.tabs.setCurrentIndex(self._index["list"])
+            self._sidebar.setCurrentRow(self._index["list"])
         elif target in self._index:
-            self.tabs.setCurrentIndex(self._index[target])
+            self._sidebar.setCurrentRow(self._index[target])
+
+    def _refresh_bell(self):
+        try:
+            n = api_client.unread_count().get("unread", 0)
+        except ApiError:
+            n = 0
+        try:
+            c = api_client.chat_unread_total().get("unread", 0)
+        except ApiError:
+            c = 0
+        self._bell_btn.setText(f"🔔 ({n + c})" if (n or c) else "🔔 اطلاع‌یه‌ها")
+
+    def _open_notifications(self):
+        NotificationsDialog(on_changed=self._refresh_bell).exec()
+        self._refresh_bell()
