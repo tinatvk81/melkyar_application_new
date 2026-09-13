@@ -19,11 +19,10 @@ class MessageIn(BaseModel):
 
 @router.get("/contacts")
 def contacts(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """فهرست مخاطبان: مشاور فقط مدیر؛ مدیر همهٔ کاربران."""
-    if user.role.value == "admin" or str(user.role) == "admin":
-        rows = db.query(User).filter(User.id != user.id).order_by(User.full_name).all()
-    else:
-        rows = db.query(User).filter(User.role == "admin").all()
+    """همهٔ کاربران فعال به‌جز خود کاربر — چت آزاد بین همه."""
+    rows = (db.query(User)
+            .filter(User.id != user.id, User.is_active.is_(True))
+            .order_by(User.full_name).all())
     return [{"id": u.id, "full_name": u.full_name, "username": u.username} for u in rows]
 
 
@@ -36,7 +35,6 @@ def conversation(other_id: int, db: Session = Depends(get_db), user: User = Depe
             ))
             .order_by(ChatMessage.id)
             .limit(200).all())
-    # پیام‌های ورودی این گفت‌وگو خوانده شوند
     for m in rows:
         if m.receiver_id == user.id and not m.is_read:
             m.is_read = True
@@ -50,7 +48,7 @@ def send(data: MessageIn, db: Session = Depends(get_db), user: User = Depends(ge
     if data.receiver_id == user.id:
         raise HTTPException(400, "به خودتان پیام نمی‌فرستید")
     other = db.get(User, data.receiver_id)
-    if not other:
+    if not other or not other.is_active:
         raise HTTPException(404, "گیرنده پیدا نشد")
     body = data.body.strip()
     if not body:
@@ -59,7 +57,6 @@ def send(data: MessageIn, db: Session = Depends(get_db), user: User = Depends(ge
     db.add(m)
     db.commit()
     db.refresh(m)
-    # اطلاع‌یه برای گیرنده (فقط اگر پیام خوانده‌نشده قبلی نداشته باشد تا اسپم نشود)
     unread = db.query(ChatMessage).filter(
         ChatMessage.sender_id == user.id, ChatMessage.receiver_id == data.receiver_id,
         ChatMessage.is_read.is_(False)).count()

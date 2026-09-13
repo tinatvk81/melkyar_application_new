@@ -497,7 +497,37 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
+    # ---------- چت‌بات ----------
+    def bot_ask(self, text: str):
+        resp = requests.post(f"{self.server_url}/bot/ask", json={"text": text},
+                             headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
 
+    def list_bot_faq(self):
+        resp = requests.get(f"{self.server_url}/bot/faq", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def create_bot_faq(self, question: str, answer: str):
+        resp = requests.post(f"{self.server_url}/bot/faq",
+                             json={"question": question, "answer": answer},
+                             headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def update_bot_faq(self, faq_id: int, question: str, answer: str):
+        resp = requests.put(f"{self.server_url}/bot/faq/{faq_id}",
+                            json={"question": question, "answer": answer},
+                            headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def delete_bot_faq(self, faq_id: int):
+        resp = requests.delete(f"{self.server_url}/bot/faq/{faq_id}", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+        
     @staticmethod
     def _raise_for_status(resp: requests.Response):
         if resp.status_code >= 400:

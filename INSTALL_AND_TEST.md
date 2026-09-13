@@ -21,7 +21,7 @@
 | مسیر پروژه | `C:\Users\Tina\Desktop\app` (در WSL: `/mnt/c/Users/Tina/Desktop/app`) |
 
 ## گام ۱: دیتابیس (داخل WSL — فقط بار اول)
-
+server/app/api/routes/chat.py
 ```bash
 sudo service postgresql start      # یا با systemd: sudo systemctl start postgresql
 sudo -u postgres psql

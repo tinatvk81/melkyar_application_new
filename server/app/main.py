@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 from app.api.routes import (
     auth, properties, users, version, import_excel, property_images,
     reports, activity_logs, deals, client_requests, follow_ups,
-    notifications, filter_presets,chat,
+    notifications, filter_presets,chat,bot,
 )
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -22,7 +22,7 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
     openapi_url="/openapi.json" if settings.DEBUG else None,
 )
-
+app.include_router(bot.router)
 app.include_router(auth.router)
 app.include_router(properties.router)
 app.include_router(property_images.router)
