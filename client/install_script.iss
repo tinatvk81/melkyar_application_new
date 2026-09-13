@@ -7,7 +7,7 @@
 ; یا از خط فرمان: ISCC.exe install_script.iss
 
 #define MyAppName "سامانه مدیریت فایل‌های ملکی"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppExeName "RealEstateApp.exe"
 
 [Setup]

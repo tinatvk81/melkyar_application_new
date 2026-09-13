@@ -510,6 +510,7 @@ class MainWindow(QMainWindow):
             ("🗄️  بایگانی", ArchiveTab(), "archive"),
             ("🙋  درخواست مشتری‌ها", ClientRequestsTab(), "requests"),
             ("✅  پیگیری روزمره", FollowUpsTab(), "followups"),
+            ("💬  گفت‌وگو", ChatTab(), "chat"),
         ]
         if api_client.role == "admin":
             pages += [
@@ -540,14 +541,40 @@ class MainWindow(QMainWindow):
         lay.addLayout(side_lay)
         lay.addWidget(self._stack, 1)
         self.setCentralWidget(central)
-
+        
         self._notif_timer = QTimer(self)
         self._notif_timer.timeout.connect(self._refresh_bell)
         self._notif_timer.start(60_000)
         QTimer.singleShot(800, self._refresh_bell)
 
+
+        # --- دکمهٔ شناور چت‌بات (گوشه پایین-چپ مثل اپ‌های سایت) ---
+        self._bot_fab = QPushButton("🤖")
+        self._bot_fab.setObjectName("botFab")
+        self._bot_fab.setFixedSize(56, 56)
+        self._bot_fab.setCursor(Qt.PointingHandCursor)
+        self._bot_fab.setToolTip("کاتدر فروش هل — سؤال بپرس")
+        # self._bot_fab.clicked.connect(self._open_bot)
+        # self._bot_fab.setParent(self)
+        # self._bot_fab.move(20, self.height() - 90)
+        # self._bot_fab.show()
+
+    # def _open_bot(self):
+    #     from ui.chat_tab import BotPanel
+    #     if not hasattr(self, "_bot_panel") or self._bot_panel is None:
+    #         self._bot_panel = BotPanel(self)
+    #     p = self._bot_panel
+    #     p.move(16, max(10, self.height() - 90 - p.height() - 8))
+    #     p.show()
+    #     p.raise_()
+
     def switch_to_renewals_tab(self):
         self._sidebar.setCurrentRow(self._index["renewals"])
+
+    # def resizeEvent(self, event):
+    #     super().resizeEvent(event)
+    #     if hasattr(self, "_bot_fab"):
+    #         self._bot_fab.move(20, self.height() - 90)
 
     def _dashboard_navigate(self, target, deal_type=None):
         if target == "list":

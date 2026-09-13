@@ -1,15 +1,14 @@
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QPoint
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QListWidget, QListWidgetItem, QLabel,
     QLineEdit, QPushButton, QScrollArea, QFrame, QMessageBox, QDialog,
-    QFormLayout, QTextEdit, QTabWidget, QInputDialog,
+    QFormLayout, QTextEdit, QTableWidget, QTableWidgetItem, QHeaderView,
+    QAbstractItemView,
 )
 
 from api_client import api_client, ApiError
 from session import handle_api_error
-from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
-BOT_ID = 0  # شناسهٔ فرضی ربات در لیست مخاطبان
-# self.table = QTableWidget()
+
 
 class Bubble(QFrame):
     def __init__(self, text, mine: bool, time_txt="", name=""):
@@ -42,8 +41,6 @@ class FaqDialog(QDialog):
         self.setWindowTitle("سؤالات متداول چت‌بات")
         self.resize(640, 500)
 
-        # self.table = QTableWidget0 = None
-        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
         self.table = QTableWidget()
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["سؤال", "پاسخ خودکار"])
@@ -147,9 +144,8 @@ class FaqDialog(QDialog):
             return
         self._reload()
 
-
 class ChatTab(QWidget):
-    """گفت‌وگو: ربات پاسخ‌گو + چت آزاد بین همهٔ کاربران."""
+    """گفت‌وگو: ربات پاسخ‌گو (اولین مخاطب) + چت آزاد بین همهٔ کاربران."""
 
     def __init__(self):
         super().__init__()
@@ -163,13 +159,19 @@ class ChatTab(QWidget):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
 
-        # --- مخاطبان ---
+        # --- مخاطبان (ربات = آیتم اول) ---
         left = QVBoxLayout()
-        self.faq_btn = QPushButton("🤖 مدیریت سؤالات متداول")
-        self.faq_btn.setVisible(api_client.role == "admin")
-        self.faq_btn.clicked.connect(lambda: FaqDialog().exec())
-        left.addWidget(self.faq_btn)
-        left.addWidget(QLabel("مخاطبان"))
+        row = QHBoxLayout()
+        row.addWidget(QLabel("مخاطبان"))
+        row.addStretch()
+        if api_client.role == "admin":
+            faq_btn = QPushButton("⚙️ سؤالات ربات")
+            faq_btn.setObjectName("chip")
+            faq_btn.setToolTip("مدیریت سؤالات و پاسخ‌های خودکار")
+            faq_btn.clicked.connect(lambda: FaqDialog().exec())
+            row.addWidget(faq_btn)
+        left.addLayout(row)
+
         self.contacts_list = QListWidget()
         self.contacts_list.setFixedWidth(200)
         self.contacts_list.currentRowChanged.connect(self._select_peer)
@@ -192,12 +194,12 @@ class ChatTab(QWidget):
         self.scroll.setWidget(self.bubbles_holder)
         right.addWidget(self.scroll, 1)
 
-        # چیپ‌های پیشنهادی ربات
+        # چیپ‌های پیشنهادی (فقط وقتی ربات انتخاب است)
         chips_row = QHBoxLayout()
-        for q in ["امکانات برنامه چیست؟", "چطور فایل جدید ثبت کنم؟", "رمزم را فراموش کردم"]:
+        for q in ["امکانات برنامه چیست؟", "چطور فایل ثبت کنم؟", "رمزم را فراموش کردم"]:
             b = QPushButton(q)
             b.setObjectName("chip")
-            b.clicked.connect(lambda _=False, t=q: self._bot_quick(t))
+            b.clicked.connect(lambda _=False, t=q: self._send_bot(t))
             chips_row.addWidget(b)
         chips_row.addStretch()
         self.chips_widget = QWidget()
@@ -207,10 +209,10 @@ class ChatTab(QWidget):
         input_row = QHBoxLayout()
         self.msg_input = QLineEdit()
         self.msg_input.setPlaceholderText("پیام خود را بنویسید و Enter بزنید…")
-        self.msg_input.returnPressed.connect(self._send)
+        self.msg_input.returnPressed.connect(self._on_enter)
         send_btn = QPushButton("ارسال")
         send_btn.setObjectName("primary")
-        send_btn.clicked.connect(self._send)
+        send_btn.clicked.connect(self._on_enter)
         input_row.addWidget(self.msg_input, 1)
         input_row.addWidget(send_btn)
         right.addLayout(input_row)
@@ -221,13 +223,10 @@ class ChatTab(QWidget):
 
     # ---------- ربات ----------
     def _load_bot_greeting(self):
+        self._clear_bubbles()
         self._add_bubble("سلام! 👋 من چت‌بات ملک‌یارم.\n"
-                         "سؤالت را بنویس (مثلاً «چطور فایل ثبت کنم؟») یا از دکمه‌های بالا استفاده کن.\n"
-                         "برای گفت‌وگو با همکاران، از لیست مخاطبان انتخابش کن.", mine=False, name="چت‌بات")
-
-    def _bot_quick(self, text):
-        self.msg_input.setText(text)
-        self._send()
+                         "سؤالت را بنویس یا از دکمه‌های پایین استفاده کن.\n"
+                         "برای گفت‌وگو با همکارانت، از لیست مخاطبان انتخابش کن.", mine=False, name="چت‌بات")
 
     # ---------- مخاطبان ----------
     def load_contacts(self):
@@ -239,24 +238,17 @@ class ChatTab(QWidget):
         self.contacts_list.blockSignals(True)
         self.contacts_list.clear()
         self._contacts = rows
-        # آیتم اول: ربات
-        bot_item = QListWidgetItem("🤖 چت‌بات (پاسخ خودکار)")
-        self.contacts_list.addItem(bot_item)
+        self.contacts_list.addItem(QListWidgetItem("🤖 چت‌بات (پاسخ خودکار)"))
         for c in rows:
             self.contacts_list.addItem(QListWidgetItem(f"👤 {c['full_name']}"))
-        self.contacts_list.setCurrentRow(0)   # پیش‌فرض: ربات
+        self.contacts_list.setCurrentRow(0)
         self.contacts_list.blockSignals(False)
 
     def _select_peer(self, row):
         if row == 0:
-            self.current_peer = None   # ربات
+            self.current_peer = None
             self.peer_label.setText("🤖 چت‌بات ملک‌یار — سؤالت را بپرس")
             self.chips_widget.setVisible(True)
-            self.bubbles_lay.removeWidget  # no-op محافظ
-            while self.bubbles_lay.count() > 1:
-                it = self.bubbles_lay.takeAt(0)
-                if it.widget():
-                    it.widget().deleteLater()
             self._load_bot_greeting()
             return
         idx = row - 1
@@ -266,6 +258,12 @@ class ChatTab(QWidget):
         self.peer_label.setText(f"گفت‌وگو با: {self.current_peer['full_name']}")
         self.chips_widget.setVisible(False)
         self.load_conversation()
+
+    def _clear_bubbles(self):
+        while self.bubbles_lay.count() > 1:
+            it = self.bubbles_lay.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
 
     def _refresh_if_open(self):
         if self.isVisible() and self.current_peer:
@@ -278,10 +276,7 @@ class ChatTab(QWidget):
             rows = api_client.chat_conversation(self.current_peer["id"])
         except ApiError:
             return
-        while self.bubbles_lay.count() > 1:
-            it = self.bubbles_lay.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
+        self._clear_bubbles()
         my_id = getattr(api_client, "user_id", None)
         names = {c["id"]: c["full_name"] for c in self._contacts}
         for m in rows:
@@ -298,28 +293,146 @@ class ChatTab(QWidget):
         sb = self.scroll.verticalScrollBar()
         QTimer.singleShot(30, lambda: sb.setValue(sb.maximum()))
 
-    def _send(self):
-        from PySide6.QtWidgets import QMessageBox as _QMB
+    # ---------- ارسال ----------
+    def _on_enter(self):
         text = self.msg_input.text().strip()
         if not text:
             return
         self.msg_input.clear()
-
         if self.current_peer is None:
-            # --- ربات ---
-            self._add_bubble(text, mine=True)
-            try:
-                res = api_client.bot_ask(text)
-            except ApiError as e:
-                handle_api_error(self, e, "خطای ربات")
-                return
-            self._add_bubble(res["answer"], mine=False, name="چت‌بات")
-            return
+            self._send_bot(text)
+        else:
+            self._send_human(text)
 
-        # --- انسان ---
+    def _send_bot(self, text):
+        self._add_bubble(text, mine=True)
+        try:
+            res = api_client.bot_ask(text)
+        except ApiError as e:
+            handle_api_error(self, e, "خطای ربات")
+            return
+        self._add_bubble(res["answer"], mine=False, name="چت‌بات")
+
+    def _send_human(self, text):
         try:
             api_client.chat_send(self.current_peer["id"], text)
         except ApiError as e:
             handle_api_error(self, e, "خطا در ارسال")
             return
         self.load_conversation()
+
+        
+# class BotPanel(QFrame):
+    # """پنل شناور چت‌بات — بالای دکمهٔ ربات باز می‌شود و با هدر جابه‌جا می‌شود."""
+
+    # def __init__(self, parent=None):
+    #     super().__init__(parent)
+    #     self.setObjectName("botPanel")
+    #     self.setLayoutDirection(Qt.RightToLeft)
+    #     self.setFixedSize(380, 520)
+    #     self._drag_pos = None
+
+    #     lay = QVBoxLayout(self)
+    #     lay.setContentsMargins(0, 0, 0, 0)
+    #     lay.setSpacing(0)
+
+    #     # --- هدر (دستهٔ جابه‌جایی) ---
+    #     header = QFrame()
+    #     header.setObjectName("botPanelHeader")
+    #     header.setCursor(Qt.SizeAllCursor)
+    #     h = QHBoxLayout(header)
+    #     h.setContentsMargins(14, 10, 10, 10)
+    #     title = QLabel("🤖 چت‌بات ملک‌یار — پاسخگوی سوالات شماست")
+    #     h.addWidget(title, 1)
+    #     if api_client.role == "admin":
+    #         faq_btn = QPushButton("⚙️")
+    #         faq_btn.setObjectName("botClose")
+    #         faq_btn.setFixedSize(28, 28)
+    #         faq_btn.setToolTip("مدیریت سؤالات متداول")
+    #         faq_btn.clicked.connect(lambda: FaqDialog().exec())
+    #         h.addWidget(faq_btn)
+    #     close_btn = QPushButton("✕")
+    #     close_btn.setObjectName("botClose")
+    #     close_btn.setFixedSize(28, 28)
+    #     close_btn.clicked.connect(self.hide)
+    #     h.addWidget(close_btn)
+    #     lay.addWidget(header)
+
+    #     # --- حباب‌ها ---
+    #     self.scroll = QScrollArea()
+    #     self.scroll.setWidgetResizable(True)
+    #     self.scroll.setFrameShape(QFrame.NoFrame)
+    #     self.holder = QWidget()
+    #     self.hlay = QVBoxLayout(self.holder)
+    #     self.hlay.setContentsMargins(8, 8, 8, 8)
+    #     self.hlay.addStretch()
+    #     self.scroll.setWidget(self.holder)
+    #     lay.addWidget(self.scroll, 1)
+
+    #     # --- چیپ‌های پیشنهادی ---
+    #     chips_row = QHBoxLayout()
+    #     for q in ["امکانات برنامه چیست؟", "چطور فایل ثبت کنم؟", "رمزم را فراموش کردم"]:
+    #         b = QPushButton(q)
+    #         b.setObjectName("chip")
+    #         b.clicked.connect(lambda _=False, t=q: self._send(t))
+    #         chips_row.addWidget(b)
+    #     chips_row.addStretch()
+    #     chips_widget = QWidget()
+    #     chips_widget.setLayout(chips_row)
+    #     lay.addWidget(chips_widget)
+
+    #     # --- ورودی ---
+    #     row = QHBoxLayout()
+    #     row.setContentsMargins(8, 6, 8, 8)
+    #     self.msg_input = QLineEdit()
+    #     self.msg_input.setPlaceholderText("پیام خود را بنویسید و Enter بزنید…")
+    #     self.msg_input.returnPressed.connect(lambda: self._send())
+    #     send_btn = QPushButton("ارسال")
+    #     send_btn.setObjectName("primary")
+    #     send_btn.clicked.connect(lambda: self._send())
+    #     row.addWidget(self.msg_input, 1)
+    #     row.addWidget(send_btn)
+    #     lay.addLayout(row)
+
+    #     self._greet()
+
+    # # ---------- جابه‌جایی پنل با هدر ----------
+    # def _header(self):
+    #     return self.findChild(QFrame, "") if False else None
+
+    # def mousePressEvent(self, event):
+    #     if event.button() == Qt.LeftButton and event.position().y() <= 46:
+    #         self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+    #     else:
+    #         self._drag_pos = None
+
+    # def mouseMoveEvent(self, event):
+    #     if self._drag_pos is not None and event.buttons() & Qt.LeftButton:
+    #         self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+    # def mouseReleaseEvent(self, event):
+    #     self._drag_pos = None
+
+    # # ---------- چت‌بات ----------
+    # def _greet(self):
+    #     self._bubble("سلام! 👋 سؤالت را دربارهٔ ملک‌یار بپرس — فایل، حسابداری، قرارداد و…", False)
+
+    # def _bubble(self, text, mine: bool):
+    #     b = Bubble(text, mine, "", "" if mine else "چت‌بات")
+    #     self.hlay.insertWidget(self.hlay.count() - 1, b)
+    #     sb = self.scroll.verticalScrollBar()
+    #     QTimer.singleShot(30, lambda: sb.setValue(sb.maximum()))
+
+    # def _send(self, text=None):
+    #     if text is None:
+    #         text = self.msg_input.text().strip()
+    #     if not text:
+    #         return
+    #     self.msg_input.clear()
+    #     self._bubble(text, True)
+    #     try:
+    #         res = api_client.bot_ask(text)
+    #     except ApiError as e:
+    #         handle_api_error(self, e, "خطای ربات")
+    #         return
+    #     self._bubble(res["answer"], False)

@@ -135,7 +135,7 @@ QFrame#statCard QLabel { background: transparent; }
 
 QListWidget#sideNav {
     background: rgba(255,255,255,0.03);
-    border: none; border-inline-start: 1px solid rgba(255,255,255,0.08);
+    border: none; 
     padding: 10px 6px; outline: none;
 }
 QListWidget#sideNav::item {
@@ -146,7 +146,6 @@ QListWidget#sideNav::item:hover { background: rgba(255,255,255,0.06); color: #ff
 QListWidget#sideNav::item:selected {
     background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 rgba(245,166,35,0.28), stop:1 rgba(249,115,22,0.14));
     color: #ffd08a; font-weight: 700;
-    border-inline-end: 3px solid #f5a623;
 }
 QLabel#sideTitle {
     font-size: 13px; font-weight: 800; color: #f5a623;
@@ -156,7 +155,22 @@ QLabel#bellLabel {
     background: rgba(245,166,35,0.10); border: 1px solid rgba(245,166,35,0.4);
     border-radius: 10px; padding: 9px; margin: 6px 10px;
 }
-
+QPushButton#botFab {
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #f5a623, stop:1 #f97316);
+    border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 28px; font-size: 24px; color: #241300; font-weight: 800;
+}
+QPushButton#botFab:hover { background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #fbb63f, stop:1 #fb8c33); }
+QFrame#botPanel {
+    background: #14111f;
+    border: 1px solid rgba(245,166,35,0.45);
+    border-radius: 16px;
+}
+QFrame#botPanelHeader {
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #f5a623, stop:1 #f97316);
+}
+QFrame#botPanelHeader QLabel { color: #241300; font-weight: 800; background: transparent; }
+QPushButton#botClose { border: none; background: transparent; color: #241300; font-size: 16px; font-weight: 900; }
 """
 
 
