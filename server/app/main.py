@@ -13,14 +13,20 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 
+# app = FastAPI(
+#     title="سامانه‌ی مدیریت فایل‌های ملکی",
+#     # مستندات خودکار API فقط در حالت توسعه (DEBUG=true در .env) فعال است —
+#     # در محیط عملیاتی، غیرفعال کردن این‌ها یعنی ساختار کامل endpointها/مدل‌ها
+#     # بدون نیاز به لاگین روی شبکه‌ی دفتر قابل مرور نیست.
+#     docs_url="/docs" if settings.DEBUG else None,
+#     redoc_url="/redoc" if settings.DEBUG else None,
+#     openapi_url="/openapi.json" if settings.DEBUG else None,
+# )
 app = FastAPI(
     title="سامانه‌ی مدیریت فایل‌های ملکی",
-    # مستندات خودکار API فقط در حالت توسعه (DEBUG=true در .env) فعال است —
-    # در محیط عملیاتی، غیرفعال کردن این‌ها یعنی ساختار کامل endpointها/مدل‌ها
-    # بدون نیاز به لاگین روی شبکه‌ی دفتر قابل مرور نیست.
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
-    openapi_url="/openapi.json" if settings.DEBUG else None,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 app.include_router(bot.router)
 app.include_router(auth.router)
