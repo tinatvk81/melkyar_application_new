@@ -48,6 +48,7 @@ def fa(text) -> str:
     return get_display(reshaped)
 
 
+
 def build_properties_pdf(properties: list[dict], title: str = "فهرست فایل‌های ملکی") -> bytes:
     font_name = _ensure_font_registered()
 
@@ -65,28 +66,39 @@ def build_properties_pdf(properties: list[dict], title: str = "فهرست فای
         Spacer(1, 6),
     ]
 
-    # ستون‌ها به‌ترتیب معکوس داده می‌شوند تا وقتی جدول چپ‌به‌راست رسم می‌شود،
-    # ترتیب دیداری آن برای خواننده‌ی فارسی‌زبان راست‌به‌چپ به‌نظر برسد.
-    headers_logical = ["شهر", "منطقه", "نوع معامله", "متراژ", "اتاق", "آدرس", "پایان قرارداد"]
-    headers_display = list(reversed([fa(h) for h in headers_logical]))
-    data = [headers_display]
+    from app.core.property_types import PROPERTY_TYPE_LABELS
+
+    def types_fa(types):
+        return "، ".join(PROPERTY_TYPE_LABELS.get(t, t) for t in (types or []))
+
+    # جدول خلاصه (همان ستون‌های قبلی + نوع ملک)
+    headers_logical = ["شهر", "منطقه", "نوع معامله", "نوع ملک", "متراژ", "اتاق",
+                        "مبلغ", "قیمت هر متر", "آدرس", "مالک", "تلفن", "پایان قرارداد"]
+    data = [list(reversed([fa(h) for h in headers_logical]))]
 
     for p in properties:
+        d = p.get("details") or {}
+        amount = d.get("price") or d.get("total_price") or d.get("deposit_full") or d.get("monthly_rent") or ""
         row_logical = [
             p.get("city") or "",
             p.get("district") or "",
             DEAL_TYPE_LABELS_FA.get(p.get("deal_type"), p.get("deal_type") or ""),
+            types_fa(p.get("property_types")),
             str(p.get("area_m2") or ""),
             str(p.get("rooms") or ""),
+            f"{int(amount):,}" if amount else "",
+            f"{int(d['price_per_m2']):,}" if d.get("price_per_m2") else "",
             p.get("address") or "",
+            p.get("owner_name") or "",
+            p.get("owner_phone") or "",
             p.get("contract_end_date") or "",
         ]
         data.append(list(reversed([fa(v) for v in row_logical])))
 
-    table = Table(data, repeatRows=1)
+    table = Table(data, repeatRows=1, colWidths=None)
     table.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), font_name),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
@@ -96,9 +108,29 @@ def build_properties_pdf(properties: list[dict], title: str = "فهرست فای
     ]))
     elements.append(table)
 
+    # --- بخش جزئیات کامل هر فایل (توضیحات/امکانات/همهٔ مبالغ) ---
+    detail_style = ParagraphStyle(name="fa-detail", fontName=font_name, fontSize=9, leading=13)
+    elements.append(Spacer(1, 18))
+    elements.append(Paragraph(fa("جزئیات فایل‌ها"), title_style))
+    for i, p in enumerate(properties, start=1):
+        d = p.get("details") or {}
+        amenities = "، ".join(p.get("amenities") or []) or "—"
+        lines = [
+            f"#{p.get('id')} — {p.get('city')} {('— ' + p['district']) if p.get('district') else ''} "
+            f"— {DEAL_TYPE_LABELS_FA.get(p.get('deal_type'), '')} — {p.get('address') or ''}",
+            f"مبلغ: {f'{int(amount):,}' if (amount := d.get('price') or d.get('total_price') or d.get('deposit_full') or d.get('monthly_rent')) else '—'} تومان"
+            f" | قیمت هر متر: {f'{int(d[\"price_per_m2\"]):,}' if d.get('price_per_m2') else '—'}"
+            f" | ودیعه: {f'{int(d[\"deposit\"]):,}' if d.get('deposit') else '—'}"
+            f" | اجارهٔ ماهانه: {f'{int(d[\"monthly_rent\"]):,}' if d.get('monthly_rent') else '—'}",
+            f"امکانات: {amenities} | وضعیت: {p.get('status')} | نسخه: {p.get('version')}",
+            f"توضیحات: {p.get('notes') or '—'}",
+        ]
+        for ln in lines:
+            elements.append(Paragraph(fa(ln), detail_style))
+        elements.append(Spacer(1, 8))
+
     doc.build(elements)
     return buffer.getvalue()
-
 
 def build_agent_performance_pdf(agents: list[dict]) -> bytes:
     font_name = _ensure_font_registered()

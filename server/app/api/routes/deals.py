@@ -241,6 +241,7 @@ def payment_receipt(payment_id: int, db: Session = Depends(get_db), _admin: User
 
 
 def _balances(db: Session) -> list[dict]:
+    users = db.query(User).all()   # غیرفعال‌ها هم می‌آیند — سوابقشان باید دیده شود
     agents = db.query(User).all()      
     # agents = db.query(User).filter(User.role == UserRole.agent).all()
     earned = dict(db.query(Deal.agent_id, func.coalesce(func.sum(Deal.commission_amount), 0))
@@ -257,6 +258,7 @@ def _balances(db: Session) -> list[dict]:
         "earned": int(earned.get(u.id, 0)),
         "paid": int(to_map.get(u.id, 0)) - int(from_map.get(u.id, 0)),
         "remaining": int(earned.get(u.id, 0)) - (int(to_map.get(u.id, 0)) - int(from_map.get(u.id, 0))),
+        "is_active": u.is_active,
     } for u in agents]
 
 

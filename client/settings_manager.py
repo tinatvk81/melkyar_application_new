@@ -53,3 +53,20 @@ def set_server_url(url: str) -> None:
     settings = load_settings()
     settings["server_url"] = url.rstrip("/")
     save_settings(settings)
+
+
+def get_saved_username() -> str:
+    return load_settings().get("saved_username") or ""
+
+def set_saved_username(username: str) -> None:
+    s = load_settings()
+    s["saved_username"] = username or ""
+    save_settings(s)
+
+def get_theme() -> str:
+    return load_settings().get("theme") or "dark"
+
+def set_theme(mode: str) -> None:
+    s = load_settings()
+    s["theme"] = mode
+    save_settings(s)

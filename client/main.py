@@ -9,7 +9,7 @@ from ui.urgent_renewals_dialog import UrgentRenewalsDialog, URGENT_DAYS_THRESHOL
 from updater import check_for_update
 from api_client import api_client, ApiError
 from session import register_session_expired_handler, reset_session_expired_flag
-
+import settings_manager
 from PySide6.QtCore import Qt
 
 from PySide6.QtWidgets import QApplication, QDialog, QDockWidget
@@ -34,7 +34,7 @@ def _limit_main_window(win):
 
 def main():
     app = QApplication(sys.argv)
-    apply_persian_rtl_style(app)
+    apply_persian_rtl_style(app, mode=settings_manager.get_theme())
 
     window_holder = {}
 

@@ -1,10 +1,9 @@
 from datetime import date, datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
 from app.models.property import DealType, PropertyStatus
-
+from typing import Optional, List
 
 class PropertyCreate(BaseModel):
     deal_type: DealType
@@ -21,12 +20,14 @@ class PropertyCreate(BaseModel):
     details: dict = {}
     notes: Optional[str] = None
     amenities: list[str] | None = None
+    property_types: Optional[list[str]] = None
 
 
 class PropertyUpdate(PropertyCreate):
     status: Optional[PropertyStatus] = None
     # قفل هم‌زمان: کلاینت باید نسخه‌ای که خوانده را برگرداند تا سرور بتواند
     # تشخیص دهد آیا از آخرین باری که این فایل را دید، شخص دیگری تغییرش داده یا نه.
+    property_types: Optional[list[str]] = None
     version: int
     amenities: list[str] | None = None
 
@@ -52,6 +53,7 @@ class PropertyRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     amenities: list[str] | None = None
+    property_types: Optional[list[str]] = None
 
     has_images: bool = False
     cover_image_id: Optional[int] = None

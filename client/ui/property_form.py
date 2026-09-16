@@ -3,7 +3,7 @@
 فیلدهای اختصاصی بر اساس نوع معامله (فروش/پیش‌خرید/اجاره/رهن‌کامل) عوض می‌شوند.
 """
 from datetime import date
-
+from ui.widgets import PropertyTypeSelector
 from PySide6.QtCore import Qt
 
 from ui.widgets import (PersianSpinBox, PersianDoubleSpinBox, MoneyLineEdit,
@@ -59,6 +59,9 @@ class PropertyFormDialog(QDialog):
             lambda _i: self._on_deal_type_changed(self.deal_type_combo.currentData())
         )
         common_form.addRow("نوع معامله:", self.deal_type_combo)
+
+        self.type_selector = PropertyTypeSelector()
+        common_form.addRow("نوع ملک:", self.type_selector)
 
         self.city_input = QLineEdit()
         common_form.addRow("شهر:", self.city_input)
@@ -193,6 +196,8 @@ class PropertyFormDialog(QDialog):
         if idx >= 0:
             self.deal_type_combo.setCurrentIndex(idx)  # این خودش _on_deal_type_changed را صدا می‌زند
 
+        self.type_selector.set_selected(p.get("property_types") or [])
+
         self.city_input.setText(p.get("city") or "")
         self.district_input.setText(p.get("district") or "")
         self.address_input.setText(p.get("address") or "")
@@ -250,6 +255,7 @@ class PropertyFormDialog(QDialog):
             "area_m2": self.area_input.value() or None,
             "rooms": self.rooms_input.value() or None,
             "has_elevator": self.elevator_check.isChecked(),
+            "property_types": self.type_selector.get_selected_keys(),
             "has_parking": self.parking_check.isChecked(),
             "owner_name": self.owner_name_input.text().strip() or None,
             "owner_phone": self.owner_phone_input.normalized_text() or None,

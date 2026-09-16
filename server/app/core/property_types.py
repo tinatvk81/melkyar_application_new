@@ -1,0 +1,15 @@
+PROPERTY_TYPE_LABELS = {
+    "apartment": "آپارتمان",
+    "villa": "ویلایی",
+    "old_house": "خانهٔ قدیمی",
+    "land": "زمین",
+    "demolishable": "کلنگی",
+    "commercial_office": "تجاری/اداری",
+    "shop": "مغازه",
+    "office": "دفتر کار",
+    "workshop": "سوله/انبار/کارگاه",
+    "educational": "آموزشی",
+    "garden": "باغ/باغچه",
+    "industrial": "صنعتی",
+    "other": "سایر",
+}

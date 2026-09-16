@@ -476,6 +476,13 @@ class MainWindow(QMainWindow):
         self._bell_btn.setCursor(Qt.PointingHandCursor)
         self._bell_btn.clicked.connect(self._open_notifications)
 
+
+        # --- دکمهٔ تم روشن/تاریک ---
+        self._theme_btn = QPushButton("☀️ روشن" if settings_manager.get_theme() == "dark" else "🌙 تاریک")
+        self._theme_btn.setObjectName("chip")
+        self._theme_btn.setCursor(Qt.PointingHandCursor)
+        self._theme_btn.clicked.connect(self._toggle_theme)
+
         # --- سایدبار + صفحه‌ها ---
         self._sidebar = QListWidget()
         self._sidebar.setObjectName("sideNav")
@@ -517,6 +524,7 @@ class MainWindow(QMainWindow):
         side_lay.setContentsMargins(0, 8, 0, 8)
         side_lay.addWidget(side_title)
         side_lay.addWidget(self._bell_btn)
+        side_lay.addWidget(self._theme_btn)
         side_lay.addWidget(self._sidebar, 1)
 
         central = QWidget()
@@ -585,3 +593,12 @@ class MainWindow(QMainWindow):
     def _open_notifications(self):
         NotificationsDialog(on_changed=self._refresh_bell).exec()
         self._refresh_bell()
+
+
+    def _toggle_theme(self):
+        from PySide6.QtWidgets import QApplication
+        from ui.styles import apply_persian_rtl_style
+        new_mode = "light" if settings_manager.get_theme() == "dark" else "dark"
+        settings_manager.set_theme(new_mode)
+        apply_persian_rtl_style(QApplication.instance(), mode=new_mode)
+        self._theme_btn.setText("☀️ روشن" if new_mode == "dark" else "🌙 تاریک")

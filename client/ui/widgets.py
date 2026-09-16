@@ -252,6 +252,54 @@ class QuickFilterBar(QWidget):
         self.reload()
 
         
+
+
+
+
+PROPERTY_TYPES = [
+    ("apartment", "آپارتمان"), ("villa", "ویلایی"), ("old_house", "خانهٔ قدیمی"),
+    ("land", "زمین"), ("demolishable", "کلنگی"), ("commercial_office", "تجاری/اداری"),
+    ("shop", "مغازه"), ("office", "دفتر کار"), ("workshop", "سوله/انبار/کارگاه"),
+    ("educational", "آموزشی"), ("garden", "باغ/باغچه"), ("industrial", "صنعتی"), ("other", "سایر"),
+]
+
+
+class PropertyTypeSelector(QWidget):
+    """انتخاب چندتایی نوع ملک — چیپ‌های toggle‌شونده"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self.listw = QListWidget()
+        self.listw.setObjectName("chipList")
+        self.listw.setViewMode(QListWidget.IconMode)
+        self.listw.setFlow(QListView.LeftToRight)
+        self.listw.setWrapping(True)
+        self.listw.setResizeMode(QListView.Adjust)
+        self.listw.setSelectionMode(QListWidget.MultiSelection)
+        self.listw.setMaximumHeight(76)
+        self.listw.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        for key, label in PROPERTY_TYPES:
+            self.listw.addItem(QListWidgetItem(label))
+            self.listw.item(self.listw.count() - 1).setData(Qt.UserRole, key)
+        lay.addWidget(self.listw)
+
+    def set_selected(self, keys: list):
+        for i in range(self.listw.count()):
+            it = self.listw.item(i)
+            it.setSelected(it.data(Qt.UserRole) in (keys or []))
+
+    def get_selected_keys(self) -> list:
+        return [self.listw.item(i).data(Qt.UserRole)
+                for i in range(self.listw.count()) if self.listw.item(i).isSelected()]
+
+    def get_selected_labels(self) -> list:
+        return [self.listw.item(i).text()
+                for i in range(self.listw.count()) if self.listw.item(i).isSelected()]
+
+
+                
 def bind_ctrl_f(window, target: QLineEdit):
     """Ctrl+F → فوکوس روی کادر جست‌وجو و انتخاب متن"""
     sc = QShortcut(QKeySequence.Find, window)

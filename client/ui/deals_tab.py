@@ -124,6 +124,10 @@ class DealFormDialog(QDialog):
         lay.addLayout(form)
         lay.addLayout(btns)
 
+        label = u["full_name"] + (" (مدیر)" if u.get("role") == "admin" else "")
+            if not u.get("is_active"):
+                label += " — غیرفعال"
+
     def handle_save(self):
         if self.prop_combo.currentIndex() < 0 or self.agent_combo.currentIndex() < 0:
             QMessageBox.warning(self, "خطا", "فایل و مشاور را انتخاب کنید.")
@@ -405,6 +409,31 @@ class DealsTab(QWidget):
         bal_pdf_btn = QPushButton("خروجی PDF مانده‌ها")
         bal_pdf_btn.clicked.connect(self._balances_pdf)
 
+        # --- دفتر حساب فردی مشاور ---
+        agent_row = QHBoxLayout()
+        agent_row.addWidget(QLabel("دفتر حساب مشاور:"))
+        self.individual_combo = QComboBox()
+        self.individual_combo.setMinimumWidth(180)
+        self.individual_combo.currentIndexChanged.connect(self._load_individual)
+        agent_row.addWidget(self.individual_combo)
+        agent_row.addStretch()
+        self.individual_label = QLabel("")
+        self.individual_label.setStyleSheet("font-weight: bold; color: #f5a623; background: transparent;")
+        agent_row.addWidget(self.individual_label)
+        lay.addLayout(agent_row)
+
+        self.ind_table = QTableWidget()
+        self.ind_table.setColumnCount(7)
+        self.ind_table.setHorizontalHeaderLabels(
+            ["#", "فایل", "مبلغ معامله", "درصد", "پورسانت", "وضعیت", "تاریخ"]
+        )
+        self.ind_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.ind_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.ind_table.setMaximumHeight(220)
+        lay.addWidget(QLabel("معامله‌های این مشاور:"))
+        lay.addWidget(self.ind_table)
+
+
         lay = QVBoxLayout(self)
         lay.addLayout(top)
         lay.addLayout(actions)
@@ -465,6 +494,19 @@ class DealsTab(QWidget):
         self.load_deals()
         self.load_balances()
 
+        label = u["full_name"] + (" (مدیر)" if u.get("role") == "admin" else "")
+            if not u.get("is_active"):
+                label += " — غیرفعال"
+        # پر کردن کمبوی دفتر فردی
+        self.individual_combo.blockSignals(True)
+        self.individual_combo.clear()
+        self.individual_combo.addItem("— انتخاب مشاور —", None)
+        for u in users:
+            label = u["full_name"] + (" (مدیر)" if u.get("role") == "admin" else "")
+            self.individual_combo.addItem(label, u["id"])
+        self.individual_combo.blockSignals(False)
+
+
     def load_deals(self):
         try:
             deals = api_client.list_deals(agent_id=self.agent_filter.currentData())
@@ -485,6 +527,39 @@ class DealsTab(QWidget):
             self.table.setItem(r, 7, QTableWidgetItem(_money(d["remaining"])))
             self.table.setItem(r, 8, QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"])))
             self.table.setItem(r, 9, QTableWidgetItem(d.get("contract_date") or "—"))
+
+    def _load_individual(self):
+        uid = self.individual_combo.currentData()
+        if uid is None:
+            self.ind_table.setRowCount(0)
+            self.individual_label.setText("")
+            return
+        try:
+            deals = api_client.list_deals(agent_id=uid)
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            return
+        self.ind_table.setRowCount(len(deals))
+        earned = paid = 0
+        finalized = 0
+        for r, d in enumerate(deals):
+            self.ind_table.setItem(r, 0, QTableWidgetItem(str(d["id"])))
+            self.ind_table.setItem(r, 1, QTableWidgetItem(f"#{d['property_id']}"))
+            self.ind_table.setItem(r, 2, QTableWidgetItem(_money(d["deal_amount"])))
+            self.ind_table.setItem(r, 3, QTableWidgetItem(f"{d['commission_percent']:g}٪"))
+            self.ind_table.setItem(r, 4, QTableWidgetItem(_money(d["commission_amount"])))
+            self.ind_table.setItem(r, 5, QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"])))
+            self.ind_table.setItem(r, 6, QTableWidgetItem(d.get("contract_date") or "—"))
+            if d["status"] == "finalized":
+                earned += d["commission_amount"]
+                finalized += 1
+            # paid = d["paid_total"] - d.get("received_total", 0)
+        paid_total = sum((d["paid_total"] - d.get("received_total", 0)) for d in deals
+                         if d["status"] == "finalized")
+        self.individual_label.setText(
+            f"معامله: {len(deals)} | قطعی: {finalized} | کارکرد: {_money(earned)} | "
+            f"پرداخت‌شده: {_money(paid_total)} | مانده: {_money(earned - paid_total)} تومان"
+        )
 
     def load_balances(self):
         try:

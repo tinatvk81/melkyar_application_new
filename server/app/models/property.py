@@ -30,7 +30,8 @@ class Property(Base):
     __tablename__ = "properties"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-
+    # نوع ملک — چندتایی: ["apartment", "land", "commercial", ...]
+    property_types: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # --- قفل هم‌زمان (Optimistic Locking) ---
     # با هر ویرایش موفق +۱ می‌شود. کلاینت باید همان نسخه‌ای که خوانده را در
     # درخواست ویرایش بفرستد؛ اگر با نسخه‌ی فعلی دیتابیس فرق داشت (یعنی شخص
