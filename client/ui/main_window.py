@@ -53,7 +53,7 @@ class PropertyListTab(QWidget):
 
 
         self.quick_bar = QuickFilterBar()
-        self.quick_bar.filter_selected.connect(self._handle_quick_filter)
+        self.quick_bar.preset_selected.connect(self._handle_preset_filter)
 
         self._delegate = MatchHighlightDelegate(self.table)
         self.table.setItemDelegate(self._delegate)
@@ -294,26 +294,11 @@ class PropertyListTab(QWidget):
     #     dialog = ArchivePropertiesDialog(on_restored=self.load_properties)
     #     dialog.exec()
 
-    def _handle_quick_filter(self, key, value):
-        fp = self.filter_panel
-        if key is None:                      # چیپ «همه»
-            fp._handle_clear()
+    def _handle_preset_filter(self, params: dict):
+        if not params:                      # چیپ «همه» → پاک‌سازی
+            self._handle_clear_filters()
             return
-        if key == "deal_type":
-            idx = fp.deal_type_combo.findData(value)
-            fp.deal_type_combo.setCurrentIndex(max(idx, 0))
-        elif key == "max_price_sale":
-            fp.deal_type_combo.setCurrentIndex(fp.deal_type_combo.findData("sale"))
-            fp.min_price_input.clear()
-            fp.max_price_input.set_value(value)
-        elif key == "min_area":
-            fp.max_area_input.setValue(0)
-            fp.min_area_input.setValue(value)
-        elif key == "has_elevator":
-            fp.elevator_combo.setCurrentIndex(2)
-        elif key == "has_parking":
-            fp.parking_combo.setCurrentIndex(2)
-        fp._handle_apply()
+        self._handle_apply_filters(params)
 
 
 class RenewalsTab(QWidget):

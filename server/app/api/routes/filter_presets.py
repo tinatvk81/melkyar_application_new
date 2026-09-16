@@ -109,3 +109,23 @@ def delete_preset(preset_id: int, db: Session = Depends(get_db), _admin: User = 
     db.delete(p)
     db.commit()
     return {"ok": True}
+
+    class PresetUpdate(BaseModel):
+    name: str
+    params: dict
+
+
+@router.put("/{preset_id}")
+def update_preset(preset_id: int, data: PresetUpdate,
+                  db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    p = db.get(FilterPreset, preset_id)
+    if not p:
+        raise HTTPException(404, "پیدا نشد")
+    dup = db.query(FilterPreset).filter(
+        FilterPreset.name == data.name.strip(), FilterPreset.id != preset_id).first()
+    if dup:
+        raise HTTPException(400, "چیپی با این نام از قبل وجود دارد")
+    p.name = data.name.strip()
+    p.params = data.params
+    db.commit()
+    return {"ok": True}

@@ -595,6 +595,13 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
+    def update_filter_preset(self, preset_id: int, name: str, params: dict):
+        resp = requests.put(f"{self.server_url}/filter-presets/{preset_id}",
+                            json={"name": name, "params": params},
+                            headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+        
     def request_delete_filter_preset(self, preset_id: int):
         resp = requests.post(f"{self.server_url}/filter-presets/{preset_id}/request-delete",
                              headers=self._headers, timeout=15)

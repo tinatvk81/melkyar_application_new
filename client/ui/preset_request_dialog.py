@@ -39,6 +39,10 @@ class PresetRequestDialog(QDialog):
             del_btn.clicked.connect(self._request_delete)
         active_lay.addWidget(self.active_table)
         active_lay.addWidget(del_btn)
+        if self.is_admin:
+            edit_btn = QPushButton("ویرایش چیپ انتخاب‌شده")
+            edit_btn.clicked.connect(self._edit_direct)
+            active_lay.addWidget(edit_btn)
         tabs.addTab(active_w, "فیلترهای فعال")
 
         # --- تب ۲ (فقط مدیر): درخواست‌ها ---
@@ -236,6 +240,44 @@ class PresetRequestDialog(QDialog):
             return
         try:
             api_client.reject_delete_filter_preset(p["id"])
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            return
+        self._reload_all()
+
+
+    def _edit_direct(self):
+        row = self.active_table.currentRow()
+        if row < 0 or row >= len(self._active):
+            QMessageBox.information(self, "توجه", "ابتدا یک فیلتر را انتخاب کنید.")
+            return
+        p = self._active[row]
+        import json as _json
+        dlg = QDialog(self)
+        dlg.setLayoutDirection(Qt.RightToLeft)
+        dlg.setWindowTitle("ویرایش فیلتر آماده")
+        form = QFormLayout()
+        name_in = QLineEdit(p["name"])
+        params_in = QTextEdit(_json.dumps(p.get("params") or {}, ensure_ascii=False))
+        params_in.setFixedHeight(80)
+        form.addRow("نام چیپ:", name_in)
+        form.addRow("فیلترها (JSON):", params_in)
+        ok = QPushButton("ذخیره"); ok.setObjectName("primary"); ok.clicked.connect(dlg.accept)
+        cancel = QPushButton("انصراف"); cancel.clicked.connect(dlg.reject)
+        r = QHBoxLayout(); r.addStretch(); r.addWidget(ok); r.addWidget(cancel)
+        lay = QVBoxLayout(dlg); lay.addLayout(form); lay.addLayout(r)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        try:
+            params = _json.loads(params_in.toPlainText().strip() or "{}")
+        except Exception:
+            QMessageBox.warning(self, "خطا", "JSON نامعتبر است. نمونه: {\"deal_type\": \"sale\"}")
+            return
+        if not name_in.text().strip():
+            QMessageBox.warning(self, "خطا", "نام الزامی است.")
+            return
+        try:
+            api_client.update_filter_preset(p["id"], name_in.text().strip(), params)
         except ApiError as e:
             handle_api_error(self, e, "خطا")
             return
