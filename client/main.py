@@ -1,6 +1,6 @@
 import sys
 
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
 from ui.styles import apply_persian_rtl_style
 from ui.login_window import LoginWindow
@@ -11,16 +11,26 @@ from api_client import api_client, ApiError
 from session import register_session_expired_handler, reset_session_expired_flag
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog
+
+from PySide6.QtWidgets import QApplication, QDialog, QDockWidget
+from PySide6.QtGui import QScreen
 
 _orig_dialog_init = QDialog.__init__
 
 def _patched_init(self, *a, **kw):
     _orig_dialog_init(self, *a, **kw)
-    self.setMinimumSize(430, 380)
-    self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+    self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)   # دکمهٔ مربع همیشه هست
+    self.setMinimumSize(400, 320)
+    # سایز پیش‌فرض: حداکثر نصف مانیتور
+    scr = QApplication.primaryScreen().availableGeometry()
+    self.resize(min(720, int(scr.width() * 0.5)), min(560, int(scr.height() * 0.5)))
 
 QDialog.__init__ = _patched_init
+
+# پنجرهٔ اصلی هم حداکثر نصف عرض مانیتور (مگر خودش بزرگش کند):
+def _limit_main_window(win):
+    scr = QApplication.primaryScreen().availableGeometry()
+    win.resize(min(960, int(scr.width() * 0.5)), min(680, int(scr.height() * 0.6)))
 
 def main():
     app = QApplication(sys.argv)
@@ -38,6 +48,7 @@ def main():
         if "login" in window_holder:
             window_holder["login"].close()
         window_holder["main"] = MainWindow()
+        _limit_main_window(window_holder["main"])
         window_holder["main"].show()
         check_for_update(window_holder["main"])
         check_urgent_renewals(window_holder["main"])

@@ -214,7 +214,7 @@ class MatchHighlightDelegate(QStyledItemDelegate):
 
 class QuickFilterBar(QWidget):
     """نوار چیپ‌های فیلتر — همه از دیتابیس (مدیریت از سایر +)"""
-    preset_selected = Signal(dict)   # {} = پاک‌سازی/همه
+    preset_selected = Signal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -251,6 +251,7 @@ class QuickFilterBar(QWidget):
         PresetRequestDialog().exec()
         self.reload()
 
+        
 def bind_ctrl_f(window, target: QLineEdit):
     """Ctrl+F → فوکوس روی کادر جست‌وجو و انتخاب متن"""
     sc = QShortcut(QKeySequence.Find, window)

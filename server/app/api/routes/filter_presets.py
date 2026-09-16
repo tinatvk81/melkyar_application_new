@@ -16,12 +16,18 @@ class PresetIn(BaseModel):
     params: dict
 
 
+class PresetUpdate(BaseModel):
+    name: str
+    params: dict
+
+
 @router.get("/")
 def list_presets(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
     return [{"id": p.id, "name": p.name, "params": p.params}
             for p in db.query(FilterPreset)
             .filter(FilterPreset.approved.is_(True), FilterPreset.pending_delete.is_(False))
             .order_by(FilterPreset.id).all()]
+
 
 @router.get("/pending")
 def pending_additions(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
@@ -38,6 +44,7 @@ def pending_deletions(db: Session = Depends(get_db), _admin: User = Depends(requ
             .filter(FilterPreset.pending_delete.is_(True)).all())
     return [{"id": p.id, "name": p.name, "params": p.params, "requester": fn} for p, fn in rows]
 
+
 @router.post("/")
 def create_preset(data: PresetIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     p = FilterPreset(name=data.name.strip(), params=data.params, requested_by=user.id,
@@ -52,6 +59,22 @@ def create_preset(data: PresetIn, db: Session = Depends(get_db), user: User = De
                                 entity_type="preset", entity_id=p.id))
         db.commit()
     return {"id": p.id, "approved": p.approved}
+
+
+@router.put("/{preset_id}")
+def update_preset(preset_id: int, data: PresetUpdate,
+                  db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    p = db.get(FilterPreset, preset_id)
+    if not p:
+        raise HTTPException(404, "پیدا نشد")
+    dup = db.query(FilterPreset).filter(
+        FilterPreset.name == data.name.strip(), FilterPreset.id != preset_id).first()
+    if dup:
+        raise HTTPException(400, "چیپی با این نام از قبل وجود دارد")
+    p.name = data.name.strip()
+    p.params = data.params
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/{preset_id}/approve")
@@ -71,7 +94,7 @@ def request_delete(preset_id: int, db: Session = Depends(get_db), user: User = D
     if not p:
         raise HTTPException(404, "پیدا نشد")
     if p.pending_delete:
-        return {"ok": True}  # قبلاً درخواست داده
+        return {"ok": True}
     p.pending_delete = True
     for a in db.query(User).filter(User.role == UserRole.admin).all():
         db.add(Notification(user_id=a.id, title="درخواست حذف فیلتر آماده",
@@ -107,25 +130,5 @@ def delete_preset(preset_id: int, db: Session = Depends(get_db), _admin: User = 
     if not p:
         raise HTTPException(404, "پیدا نشد")
     db.delete(p)
-    db.commit()
-    return {"ok": True}
-
-    class PresetUpdate(BaseModel):
-    name: str
-    params: dict
-
-
-@router.put("/{preset_id}")
-def update_preset(preset_id: int, data: PresetUpdate,
-                  db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
-    p = db.get(FilterPreset, preset_id)
-    if not p:
-        raise HTTPException(404, "پیدا نشد")
-    dup = db.query(FilterPreset).filter(
-        FilterPreset.name == data.name.strip(), FilterPreset.id != preset_id).first()
-    if dup:
-        raise HTTPException(400, "چیپی با این نام از قبل وجود دارد")
-    p.name = data.name.strip()
-    p.params = data.params
     db.commit()
     return {"ok": True}

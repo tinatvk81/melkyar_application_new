@@ -7,15 +7,15 @@ branch_labels = None
 depends_on = None
 
 DEFAULT_PRESETS = [
-    ("همه", "{}"),
-    ("فروش", '{"deal_type": "sale"}'),
-    ("اجاره", '{"deal_type": "rent"}'),
-    ("رهن کامل", '{"deal_type": "mortgage"}'),
-    ("پیش‌خرید", '{"deal_type": "presale"}'),
-    ("فروش زیر ۲ میلیارد", '{"deal_type": "sale", "max_price": 2000000000}'),
-    ("متراژ ۱۰۰+", '{"min_area": 100}'),
-    ("آسانسور", '{"has_elevator": true}'),
-    ("پارکینگ", '{"has_parking": true}'),
+    # ("همه", "{}"),
+    # ("فروش", '{"deal_type": "sale"}'),
+    # ("اجاره", '{"deal_type": "rent"}'),
+    # ("رهن کامل", '{"deal_type": "mortgage"}'),
+    # ("پیش‌خرید", '{"deal_type": "presale"}'),
+    # ("فروش زیر ۲ میلیارد", '{"deal_type": "sale", "max_price": 2000000000}'),
+    # ("متراژ ۱۰۰+", '{"min_area": 100}'),
+    # ("آسانسور", '{"has_elevator": true}'),
+    # ("پارکینگ", '{"has_parking": true}'),
 ]
 
 
