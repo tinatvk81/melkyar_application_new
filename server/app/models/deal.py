@@ -1,16 +1,16 @@
 import enum
 from datetime import date, datetime, timezone
 
-from sqlalchemy import String, Integer, Float, Date, DateTime, Enum, ForeignKey, Text
+from sqlalchemy import String, Integer, BigInteger, Float, Date, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
 
 class DealStatus(str, enum.Enum):
-    pending = "pending"        # قولنامه ثبت شده، هنوز قطعی نشده
-    finalized = "finalized"    # قطعی شده — پورسانت رسمی می‌شود
-    canceled = "canceled"      # لغو شده
+    pending = "pending"
+    finalized = "finalized"
+    canceled = "canceled"
 
 
 class Deal(Base):
@@ -20,9 +20,8 @@ class Deal(Base):
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"), nullable=False, index=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
 
-    deal_amount: Mapped[int] = mapped_column(Integer, nullable=False)          # مبلغ کل معامله (تومان)
-    commission_percent: Mapped[float] = mapped_column(Float, nullable=False)   # درصد پورسانت این معامله
-    commission_amount: Mapped[int] = mapped_column(Integer, nullable=False)    # پورسانت (تومان)
+    deal_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    commission_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     status: Mapped[DealStatus] = mapped_column(
         Enum(DealStatus), default=DealStatus.pending, nullable=False, index=True
@@ -36,8 +35,7 @@ class Deal(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
@@ -47,10 +45,10 @@ class CommissionPayment(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     deal_id: Mapped[int] = mapped_column(ForeignKey("deals.id"), nullable=False, index=True)
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
     paid_date: Mapped[date] = mapped_column(Date, nullable=True)
     note: Mapped[str] = mapped_column(String(500), nullable=True)
-    receipt_path: Mapped[str] = mapped_column(String(255), nullable=True)   # عکس رسید
+    receipt_path: Mapped[str] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

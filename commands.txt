@@ -30,3 +30,12 @@ docker compose up -d --build
 docker compose exec server alembic upgrade head
 docker compose exec server python scripts/init_admin.py
 curl http://localhost:8000/health    # ✅
+
+
+#
+cd C:\Users\Tina\Desktop\app\client
+venv\Scripts\activate
+build_installer.bat
+:: خروجی: client\dist\RealEstateApp.exe
+:: بعدش کپی با نام نسخه‌دار برای آپدیت خودکار:
+copy dist\RealEstateApp.exe ..\server\static_installers\RealEstateApp-Setup-1.2.0.exe

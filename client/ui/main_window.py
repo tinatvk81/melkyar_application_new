@@ -5,6 +5,12 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
     QFileDialog, QComboBox, QHeaderView, QStackedWidget
 )
+import math
+
+from PySide6.QtWidgets import QApplication
+from ui.styles import apply_persian_rtl_style
+import settings_manager
+from ui.property_card_view import PropertyCardView
 from ui.chat_tab import ChatTab
 from ui.client_requests_tab import ClientRequestsTab
 from ui.follow_ups_tab import FollowUpsTab, NotificationsDialog
@@ -51,7 +57,11 @@ class PropertyListTab(QWidget):
         self.table.setColumnWidth(0, 64)
         self.table.verticalHeader().setDefaultSectionSize(56)
 
+        # --- نمای کارتی (دیوارگونه) ---
+        self.card_view = PropertyCardView(thumb_loader=self._get_thumb, on_open=self._open_property_card)
+        self.card_view.setVisible(False)
 
+        
         self.quick_bar = QuickFilterBar()
         self.quick_bar.preset_selected.connect(self._handle_preset_filter)
 
@@ -119,16 +129,21 @@ class PropertyListTab(QWidget):
         self.toggle_filter_btn = QPushButton("پنهان کردن فیلترها ▲")
         self.toggle_filter_btn.setObjectName("chip")
         self.toggle_filter_btn.clicked.connect(self._toggle_filters)
-
+        self.view_toggle_btn = QPushButton("نمایش کارتی 🖼")
+        self.view_toggle_btn.setObjectName("chip")
+        self.view_toggle_btn.clicked.connect(self._toggle_view)
         tools_row = QHBoxLayout()
         tools_row.addWidget(self.toggle_filter_btn)
         tools_row.addWidget(self.quick_bar, 1)
+        tools_row.addWidget(self.view_toggle_btn)
+
 
         layout = QVBoxLayout()
         layout.addLayout(tools_row)
         layout.addWidget(self.filter_panel)
         layout.addLayout(top_bar)
         layout.addWidget(self.table)
+        layout.addWidget(self.card_view)
         layout.addLayout(pagination_bar)
         self.setLayout(layout)
 
@@ -143,11 +158,26 @@ class PropertyListTab(QWidget):
         self._current_filters = filters
         self._current_page = 1
         self.load_properties()
+        if self.card_view.isVisible(): self.card_view.load(**self._current_filters)
+
+
+    def _toggle_view(self):
+        card_mode = not self.card_view.isVisible()
+        self.card_view.setVisible(card_mode)
+        self.table.setVisible(not card_mode)
+        self.view_toggle_btn.setText("نمای جدول 📋" if card_mode else "نمایش کارتی 🖼")
+        if card_mode:
+            self.card_view.load(**self._current_filters)
+
+    def _open_property_card(self, prop):
+        PropertyFormDialog(property_data=prop, on_saved=self.load_properties).exec()
+
 
     def _handle_clear_filters(self):
         self._current_filters = {}
         self._current_page = 1
         self.load_properties()
+        if self.card_view.isVisible(): self.card_view.load(**self._current_filters)
 
     def handle_prev_page(self):
         if self._current_page > 1:
@@ -370,28 +400,49 @@ class ActivityLogTab(QWidget):
         self._current_page = 1
         self._total_pages = 1
 
+        # --- کمبوها (اول همه ساخته می‌شوند) ---
         self.entity_filter_combo = QComboBox()
         for value, label in self.ENTITY_TYPE_LABELS.items():
             self.entity_filter_combo.addItem(label, value)
         self.entity_filter_combo.currentIndexChanged.connect(self._handle_filter_changed)
 
+        self.user_filter_combo = QComboBox()
+        self.user_filter_combo.addItem("همه کاربران", None)
+        try:
+            for u in api_client.list_users():
+                self.user_filter_combo.addItem(u["full_name"], u["id"])
+        except ApiError:
+            pass
+        self.user_filter_combo.currentIndexChanged.connect(self._handle_filter_changed)
+
         self.days_filter_combo = QComboBox()
         for value, label in [(7, "۷ روز اخیر"), (30, "۳۰ روز اخیر"), (90, "۹۰ روز اخیر"), (0, "همه‌ی تاریخچه")]:
             self.days_filter_combo.addItem(label, value)
-        self.days_filter_combo.setCurrentIndex(1)  # پیش‌فرض: ۳۰ روز اخیر
+        self.days_filter_combo.setCurrentIndex(1)
         self.days_filter_combo.currentIndexChanged.connect(self._handle_filter_changed)
 
+        # --- جدول دوستونی ---
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["زمان", "کاربر", "عملیات", "نوع", "جزئیات"])
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["زمان", "کاربر", "عملیات", "زمان", "کاربر", "عملیات"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setColumnWidth(0, 140)
+        self.table.setColumnWidth(1, 130)
+        self.table.setColumnWidth(2, 120)
+        self.table.setColumnWidth(3, 140)
+        self.table.setColumnWidth(4, 130)
+        self.table.setColumnWidth(5, 120)
+        self.table.setStyleSheet("QTableWidget::item { border-right: 1px solid rgba(128,128,140,0.35); }")
 
         refresh_btn = QPushButton("به‌روزرسانی")
         refresh_btn.clicked.connect(self.load_logs)
 
+        # --- نوار فیلتر (بعد از ساخته‌شدن همه) ---
         filter_bar = QHBoxLayout()
         filter_bar.addWidget(QLabel("نوع:"))
         filter_bar.addWidget(self.entity_filter_combo)
+        filter_bar.addWidget(QLabel("کاربر:"))
+        filter_bar.addWidget(self.user_filter_combo)
         filter_bar.addWidget(QLabel("بازه:"))
         filter_bar.addWidget(self.days_filter_combo)
         filter_bar.addStretch()
@@ -419,9 +470,11 @@ class ActivityLogTab(QWidget):
 
         self.load_logs()
 
+
     def _handle_filter_changed(self):
         self._current_page = 1
         self.load_logs()
+
 
     def load_logs(self):
         try:
@@ -429,6 +482,7 @@ class ActivityLogTab(QWidget):
                 page=self._current_page,
                 entity_type=self.entity_filter_combo.currentData() or None,
                 days=self.days_filter_combo.currentData(),
+                user_id=self.user_filter_combo.currentData(),
             )
         except ApiError as e:
             handle_api_error(self, e, "خطا")
@@ -437,19 +491,25 @@ class ActivityLogTab(QWidget):
         logs = response["items"]
         self._total_pages = response["total_pages"]
 
-        self.table.setRowCount(len(logs))
-        for row, log in enumerate(logs):
-            self.table.setItem(row, 0, QTableWidgetItem(log["created_at"].replace("T", " ")[:19]))
-            self.table.setItem(row, 1, QTableWidgetItem(log.get("user_full_name") or log.get("username") or ""))
-            self.table.setItem(row, 2, QTableWidgetItem(self.ACTION_LABELS.get(log["action"], log["action"])))
-            self.table.setItem(row, 3, QTableWidgetItem(self.ENTITY_TYPE_LABELS.get(log["entity_type"], log["entity_type"])))
-            self.table.setItem(row, 4, QTableWidgetItem(log.get("detail") or ""))
-
+        half = math.ceil(len(logs) / 2)
+        right = logs[:half]        # ستون اول (راست در RTL)
+        left = logs[half:]         # ستون دوم — ادامه‌ی شماره‌ها (۴،۵،...)
+        pairs = max(len(right), len(left))
+        self.table.setRowCount(pairs)
+        for r, log in enumerate(right):
+            self.table.setItem(r, 0, QTableWidgetItem((log["created_at"] or "")[:16].replace("T", " ")))
+            self.table.setItem(r, 1, QTableWidgetItem(log.get("user_full_name") or log.get("username") or ""))
+            self.table.setItem(r, 2, QTableWidgetItem(self.ACTION_LABELS.get(log["action"], log["action"])))
+        for r, log in enumerate(left):
+            self.table.setItem(r, 3, QTableWidgetItem((log["created_at"] or "")[:16].replace("T", " ")))
+            self.table.setItem(r, 4, QTableWidgetItem(log.get("user_full_name") or log.get("username") or ""))
+            self.table.setItem(r, 5, QTableWidgetItem(self.ACTION_LABELS.get(log["action"], log["action"])))
         self.status_label.setText(
             f"صفحه {self._current_page} از {self._total_pages} — تعداد کل: {response['total']}"
         )
         self.prev_btn.setEnabled(self._current_page > 1)
         self.next_btn.setEnabled(self._current_page < self._total_pages)
+
 
     def handle_prev_page(self):
         if self._current_page > 1:
@@ -596,9 +656,16 @@ class MainWindow(QMainWindow):
 
 
     def _toggle_theme(self):
-        from PySide6.QtWidgets import QApplication
-        from ui.styles import apply_persian_rtl_style
         new_mode = "light" if settings_manager.get_theme() == "dark" else "dark"
         settings_manager.set_theme(new_mode)
         apply_persian_rtl_style(QApplication.instance(), mode=new_mode)
         self._theme_btn.setText("☀️ روشن" if new_mode == "dark" else "🌙 تاریک")
+
+        # رفرش حباب‌های چت با تم جدید
+        try:
+            for i in range(self._stack.count()):
+                wd = self._stack.widget(i)
+                if isinstance(wd, ChatTab) and wd.current_peer is not None:
+                    wd.load_conversation()
+        except Exception:
+            pass

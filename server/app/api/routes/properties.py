@@ -1,7 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, Float, or_, and_
+from sqlalchemy import func, Float, or_, and_, String
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -71,8 +71,20 @@ def apply_filters(
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
     search: Optional[str] = None,
+    property_type: Optional[str] = None
 ):
     """فیلترهای مشترک بین فهرست فایل‌ها و خروجی PDF/اکسل، تا هردو دقیقاً یک منطق را دنبال کنند."""
+
+    if property_type:
+        q = q.filter(
+            func.json_typeof(Property.property_types) == 'array',
+            func.json_array_length(Property.property_types) >= 0,
+        )
+        # جست‌وجوی مقدار در آرایه‌ی JSON:
+        q = q.filter(
+            Property.property_types.cast(String).like(f'%"{property_type}"%')
+        )
+
     if city:
         q = q.filter(Property.city == city)
     if district:
@@ -166,6 +178,7 @@ def list_properties(
     page_size: int = DEFAULT_PAGE_SIZE,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    property_type: Optional[str] = None
 ):
     """
     نکته‌ی مهم مقیاس: نسخه‌ی قبلی این endpoint یک `.limit(500)` هاردکد داشت که
@@ -182,7 +195,7 @@ def list_properties(
     q = apply_filters(
         q, city=city, district=district, deal_type=deal_type, min_area=min_area, max_area=max_area,
         min_rooms=min_rooms, has_elevator=has_elevator, has_parking=has_parking,
-        min_price=min_price, max_price=max_price, search=search,
+        min_price=min_price, max_price=max_price, search=search, property_type=property_type,
     )
     order_clause = _build_order_clause(sort_by, sort_order)
     return _attach_cover_info(db, _paginate(q, page, page_size, order_clause=order_clause))

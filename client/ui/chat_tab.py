@@ -10,28 +10,52 @@ from api_client import api_client, ApiError
 from session import handle_api_error
 
 
+from settings_manager import get_theme
+
 class Bubble(QFrame):
     def __init__(self, text, mine: bool, time_txt="", name=""):
         super().__init__()
+        light = get_theme() == "light"
+        # سؤال کاربر = زرد / پاسخ = آبی ملایم (روشن) یا سبز-تیرهٔ ملایم (تاریک)
+        if mine:
+            bg = "#f5d67a" if light else "#8a6d1f"
+            txtc = "#241300" if light else "#fff3cf"
+        else:
+            bg = "#d6e4ff" if light else "#22304d"
+            txtc = "#1c2333" if light else "#e6eeff"
+        meta_c = "#6a7488" if light else "rgba(230,238,255,0.45)"
+        name_c = "#b26a00" if light else "#7cc4ff"
+
+        self.setObjectName("chatBubble")
         self.setStyleSheet(
-            f"QFrame {{ background: {'rgba(245,166,35,0.22)' if mine else 'rgba(255,255,255,0.07)'};"
-            f" border-radius: 12px; }}"
-            "QLabel { background: transparent; }")
+            f"QFrame#chatBubble {{ background: {bg}; border-radius: 14px; }}"
+            f"QFrame#chatBubble QLabel {{ background: transparent; color: {txtc}; border: none; }}")
+
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setContentsMargins(12, 8, 12, 8)
+        lay.setSpacing(3)
         if name:
             who = QLabel(name)
-            who.setStyleSheet("color: #f5a623; font-size: 9px; font-weight: bold;")
+            who.setStyleSheet(f"color: {name_c}; font-size: 9px; font-weight: bold;")
             lay.addWidget(who)
         body = QLabel(text)
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        body.setFont(self._chat_font())
         lay.addWidget(body)
-        meta = QLabel(time_txt)
-        meta.setStyleSheet("color: rgba(236,234,244,0.5); font-size: 9px;")
-        meta.setAlignment(Qt.AlignLeft if mine else Qt.AlignRight)
-        lay.addWidget(meta)
+        t = QLabel(time_txt)
+        t.setStyleSheet(f"color: {meta_c}; font-size: 9px;")
+        t.setAlignment(Qt.AlignLeft if mine else Qt.AlignRight)
+        lay.addWidget(t)
 
+    @staticmethod
+    def _chat_font():
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        f = app.font()
+        f = type(f)(f)
+        f.setPointSize(int(f.pointSize() + getattr(app, "chat_font_delta", 0)))
+        return f
 
 class FaqDialog(QDialog):
     """مدیریت سؤالات متداول — فقط مدیر."""
@@ -194,32 +218,37 @@ class ChatTab(QWidget):
         self.scroll.setWidget(self.bubbles_holder)
         right.addWidget(self.scroll, 1)
 
-        # چیپ‌های پیشنهادی (فقط وقتی ربات انتخاب است)
+        # چیپ‌های پیشنهادی + تنظیم فونت (فقط وقتی ربات انتخاب است)
         chips_row = QHBoxLayout()
         for q in ["امکانات برنامه چیست؟", "چطور فایل ثبت کنم؟", "رمزم را فراموش کردم"]:
             b = QPushButton(q)
             b.setObjectName("chip")
             b.clicked.connect(lambda _=False, t=q: self._send_bot(t))
             chips_row.addWidget(b)
-        chips_row.addStretch()
+        chips_row.addWidget(QLabel("|"))
+        font_dn = QPushButton("A−")
+        font_dn.setObjectName("chip"); font_dn.setFixedWidth(38)
+        font_up = QPushButton("A+")
+        font_up.setObjectName("chip"); font_up.setFixedWidth(38)
+        font_dn.clicked.connect(lambda: self._change_font(-1))
+        font_up.clicked.connect(lambda: self._change_font(1))
+        chips_row.addWidget(font_dn)
+        chips_row.addWidget(font_up)
+        chips_row.addStretch()                    # ← stretch آخر
         self.chips_widget = QWidget()
         self.chips_widget.setLayout(chips_row)
         right.addWidget(self.chips_widget)
 
-        input_row = QHBoxLayout()
-        self.msg_input = QLineEdit()
-        self.msg_input.setPlaceholderText("پیام خود را بنویسید و Enter بزنید…")
-        self.msg_input.returnPressed.connect(self._on_enter)
-        send_btn = QPushButton("ارسال")
-        send_btn.setObjectName("primary")
-        send_btn.clicked.connect(self._on_enter)
-        input_row.addWidget(self.msg_input, 1)
-        input_row.addWidget(send_btn)
-        right.addLayout(input_row)
 
-        lay.addLayout(right, 1)
-        self.load_contacts()
-        self._load_bot_greeting()
+    def _change_font(self, delta: int):
+        app = QApplication.instance()
+        cur = getattr(app, "chat_font_delta", 0)
+        app.chat_font_delta = max(-3, min(6, cur + delta))
+        # رندر مجدد حباب‌های موجود
+        if self.current_peer is not None:
+            self.load_conversation()
+        else:
+            self._load_bot_greeting()
 
     # ---------- ربات ----------
     def _load_bot_greeting(self):
@@ -287,12 +316,17 @@ class ChatTab(QWidget):
         sb = self.scroll.verticalScrollBar()
         QTimer.singleShot(50, lambda: sb.setValue(sb.maximum()))
 
+
     def _add_bubble(self, text, mine: bool, time_txt="", name=""):
+        wrap = QWidget()
+        w_lay = QHBoxLayout(wrap)
+        w_lay.setContentsMargins(20 if mine else 0, 3, 0 if mine else 20, 3)
         b = Bubble(text, mine, time_txt, name)
-        self.bubbles_lay.insertWidget(self.bubbles_lay.count() - 1, b)
+        b.setMaximumWidth(620)          # حباب هرگز تمام عرض نمی‌شود
+        w_lay.addWidget(b, 0 if mine else 1, Qt.AlignLeft if mine else Qt.AlignRight)
+        self.bubbles_lay.insertWidget(self.bubbles_lay.count() - 1, wrap)
         sb = self.scroll.verticalScrollBar()
         QTimer.singleShot(30, lambda: sb.setValue(sb.maximum()))
-
     # ---------- ارسال ----------
     def _on_enter(self):
         text = self.msg_input.text().strip()

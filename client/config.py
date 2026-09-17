@@ -13,4 +13,4 @@ exe نیست — کافی است settings.json یا همان پنجره‌ی ت�
 # مقدار پیش‌فرض اولیه (فقط برای اولین اجرا، قبل از ساخته‌شدن settings.json)
 SERVER_URL = "http://192.168.1.10:8000"
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.3.0"

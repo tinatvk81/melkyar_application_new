@@ -23,9 +23,11 @@ class JalaliDateEdit(QWidget):
         self.month_spin = PersianSpinBox(minimum=1, maximum=12)
         self.month_spin.setValue(today.month)
         self.day_spin = PersianSpinBox(minimum=1, maximum=31)
-        self.day_spin.setValue(today.day)
         for sp, w in ((self.year_spin, 95), (self.month_spin, 75), (self.day_spin, 75)):
             sp.setMinimumWidth(w)
+        self.day_spin.setValue(today.day)
+        # for sp, w in ((self.year_spin, 95), (self.month_spin, 75), (self.day_spin, 75)):
+        #     sp.setMinimumWidth(w)
 
         today_btn = QPushButton("امروز")
         today_btn.clicked.connect(self.set_today)

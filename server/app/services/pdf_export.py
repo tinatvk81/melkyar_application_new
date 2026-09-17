@@ -8,6 +8,8 @@
 """
 import io
 import os
+from app.core.property_types import PROPERTY_TYPE_LABELS
+from reportlab.lib.pagesizes import A4, landscape
 
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -48,7 +50,6 @@ def fa(text) -> str:
     return get_display(reshaped)
 
 
-
 def build_properties_pdf(properties: list[dict], title: str = "فهرست فایل‌های ملکی") -> bytes:
     font_name = _ensure_font_registered()
 
@@ -66,12 +67,10 @@ def build_properties_pdf(properties: list[dict], title: str = "فهرست فای
         Spacer(1, 6),
     ]
 
-    from app.core.property_types import PROPERTY_TYPE_LABELS
 
     def types_fa(types):
         return "، ".join(PROPERTY_TYPE_LABELS.get(t, t) for t in (types or []))
 
-    # جدول خلاصه (همان ستون‌های قبلی + نوع ملک)
     headers_logical = ["شهر", "منطقه", "نوع معامله", "نوع ملک", "متراژ", "اتاق",
                         "مبلغ", "قیمت هر متر", "آدرس", "مالک", "تلفن", "پایان قرارداد"]
     data = [list(reversed([fa(h) for h in headers_logical]))]
@@ -95,47 +94,88 @@ def build_properties_pdf(properties: list[dict], title: str = "فهرست فای
         ]
         data.append(list(reversed([fa(v) for v in row_logical])))
 
-    table = Table(data, repeatRows=1, colWidths=None)
+    table = Table(data, repeatRows=1)
     table.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), font_name),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        # ("FONTSIZE", (0, 0), (-1, -1), 7),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTSIZE", (0, 0), (-1, 0), 6.5),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f2f2f2")]),
     ]))
+
+    doc_pagesize = landscape(A4)   # برگهٔ افقی
     elements.append(table)
 
-    # --- بخش جزئیات کامل هر فایل (توضیحات/امکانات/همهٔ مبالغ) ---
+        # --- جزئیات کامل هر فایل: جدول دوستونی مرتب ---
     detail_style = ParagraphStyle(name="fa-detail", fontName=font_name, fontSize=9, leading=13)
+    head_style = ParagraphStyle(name="fa-head", fontName=font_name, fontSize=11,
+                                 textColor=colors.white, alignment=1, backColor=colors.HexColor("#34495e"))
+    kv_style = ParagraphStyle(name="fa-kv", fontName=font_name, fontSize=9, leading=13)
+
     elements.append(Spacer(1, 18))
     elements.append(Paragraph(fa("جزئیات فایل‌ها"), title_style))
-    for i, p in enumerate(properties, start=1):
-        d = p.get("details") or {}
-        amenities = "، ".join(p.get("amenities") or []) or "—"
-        lines = [
-            f"#{p.get('id')} — {p.get('city')} {('— ' + p['district']) if p.get('district') else ''} "
-            f"— {DEAL_TYPE_LABELS_FA.get(p.get('deal_type'), '')} — {p.get('address') or ''}",
-            f"مبلغ: {f'{int(amount):,}' if (amount := d.get('price') or d.get('total_price') or d.get('deposit_full') or d.get('monthly_rent')) else '—'} تومان"
-            f" | قیمت هر متر: {f'{int(d[\"price_per_m2\"]):,}' if d.get('price_per_m2') else '—'}"
-            f" | ودیعه: {f'{int(d[\"deposit\"]):,}' if d.get('deposit') else '—'}"
-            f" | اجارهٔ ماهانه: {f'{int(d[\"monthly_rent\"]):,}' if d.get('monthly_rent') else '—'}",
-            f"امکانات: {amenities} | وضعیت: {p.get('status')} | نسخه: {p.get('version')}",
-            f"توضیحات: {p.get('notes') or '—'}",
-        ]
-        for ln in lines:
-            elements.append(Paragraph(fa(ln), detail_style))
-        elements.append(Spacer(1, 8))
 
+    for p in properties:
+        d = p.get("details") or {}
+        amount = d.get("price") or d.get("total_price") or d.get("deposit_full") or d.get("monthly_rent")
+        amount_txt = f"{int(amount):,}" if amount else "—"
+        ppm = f"{int(d['price_per_m2']):,}" if d.get("price_per_m2") else "—"
+        dep = f"{int(d['deposit']):,}" if d.get("deposit") else "—"
+        rent = f"{int(d['monthly_rent']):,}" if d.get("monthly_rent") else "—"
+        district_txt = f"— {p['district']}" if p.get("district") else ""
+        amenities = "، ".join(p.get("amenities") or []) or "—"
+        types_fa_txt = "، ".join(
+            PROPERTY_TYPE_LABELS.get(t, t) for t in (p.get("property_types") or [])) or "—"
+
+        pairs = [
+            ("شناسه / وضعیت", f"#{p.get('id')} — {p.get('status')}"),
+            ("موقعیت", f"{p.get('city')} {district_txt} — {p.get('address') or '—'}"),
+            ("نوع معامله / نوع ملک",
+             f"{DEAL_TYPE_LABELS_FA.get(p.get('deal_type'), '')} / {types_fa_txt}"),
+            ("متراژ / اتاق", f"{p.get('area_m2') or '—'} متر / {p.get('rooms') or '—'} اتاق"),
+            ("مبلغ", f"{amount_txt} تومان"),
+            ("قیمت هر متر", f"{ppm} تومان"),
+            ("ودیعه / اجارهٔ ماهانه", f"{dep} / {rent} تومان"),
+            ("مالک", f"{p.get('owner_name') or '—'} — {p.get('owner_phone') or '—'}"),
+            ("امکانات", amenities),
+            ("پایان قرارداد", p.get("contract_end_date") or "—"),
+            ("توضیحات", p.get("notes") or "—"),
+        ]
+        data = [[fa("موارد"), fa("مقدار")]]
+        for k, v in pairs:
+            data.append([fa(k), fa(str(v))])
+        t = Table(data, colWidths=[4.2 * cm, 13.3 * cm])
+        t.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), font_name),
+            # ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("FONTSIZE", (0, 0), (-1, 0), 6.5),
+            ("SPAN", (0, 0), (0, 0)),  # هدر دو ستونه
+            ("BACKGROUND", (0, 0), (0, 0), colors.HexColor("#34495e")),
+            ("SPAN", (1, 0), (1, 0)),
+            ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#34495e")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("BACKGROUND", (0, 1), (0, -1), colors.HexColor("#eef1f6")),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 12))
     doc.build(elements)
     return buffer.getvalue()
+
 
 def build_agent_performance_pdf(agents: list[dict]) -> bytes:
     font_name = _ensure_font_registered()
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+    # doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
+                            topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+                            leftMargin=1.2 * cm, rightMargin=1.2 * cm)
 
     title_style = ParagraphStyle(name="fa-title", fontName=font_name, fontSize=16, alignment=1, spaceAfter=14)
     elements = [Paragraph(fa("گزارش عملکرد مشاوران"), title_style), Spacer(1, 6)]
@@ -159,11 +199,13 @@ def build_agent_performance_pdf(agents: list[dict]) -> bytes:
     table = Table(data, repeatRows=1)
     table.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), font_name),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("FONTSIZE", (0, 0), (-1, 0), 6.5),
+        # ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f2f2f2")]),
     ]))
     elements.append(table)

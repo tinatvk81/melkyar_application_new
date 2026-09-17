@@ -4,6 +4,8 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QMessageBox, QDialog, QFormLayout, QLineEdit, QTextEdit,
     QFileDialog, QHeaderView,
 )
+from PySide6.QtWidgets import QTabWidget  
+
 import os
 import tempfile
 from api_client import api_client, ApiError
@@ -124,10 +126,6 @@ class DealFormDialog(QDialog):
         lay.addLayout(form)
         lay.addLayout(btns)
 
-        label = u["full_name"] + (" (مدیر)" if u.get("role") == "admin" else "")
-            if not u.get("is_active"):
-                label += " — غیرفعال"
-
     def handle_save(self):
         if self.prop_combo.currentIndex() < 0 or self.agent_combo.currentIndex() < 0:
             QMessageBox.warning(self, "خطا", "فایل و مشاور را انتخاب کنید.")
@@ -228,6 +226,7 @@ class PaymentDialog(QDialog):
         self.on_saved()
         self.accept()
 
+
 class PaymentsDialog(QDialog):
     def __init__(self, deal, on_changed, agent_name=None):
         super().__init__()
@@ -247,7 +246,6 @@ class PaymentsDialog(QDialog):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
 
         self.total_label = QLabel("")
-
         add_btn = QPushButton("افزودن پرداخت")
         add_btn.setObjectName("primary")
         add_btn.clicked.connect(self._add_payment)
@@ -342,8 +340,9 @@ class PaymentsDialog(QDialog):
         self._reload()
         self.on_changed()
 
+
 class DealsTab(QWidget):
-    """حسابداری پورسانت — فقط مدیر."""
+    """حسابداری پورسانت — فقط مدیر. سه تب: معامله‌ها / مانده‌ها / دفتر فردی."""
 
     def __init__(self):
         super().__init__()
@@ -355,92 +354,94 @@ class DealsTab(QWidget):
         self.agent_filter.addItem("همه مشاوران", None)
         self.agent_filter.currentIndexChanged.connect(self.load_deals)
 
+        self.status_filter = QComboBox()
+        self.status_filter.addItem("همه وضعیت‌ها", None)
+        for v, l in DEAL_STATUS_LABELS.items():
+            self.status_filter.addItem(l, v)
+        self.status_filter.currentIndexChanged.connect(self.load_deals)
+
+        self.period_combo = QComboBox()
+        self.period_combo.addItem("همهٔ زمان‌ها", None)
+        self.period_combo.addItem("۳۰ روز اخیر", 30)
+        self.period_combo.addItem("۹۰ روز اخیر", 90)
+        self.period_combo.addItem("۱ سال اخیر", 365)
+        self.period_combo.currentIndexChanged.connect(self.load_deals)
+
         refresh_btn = QPushButton("به‌روزرسانی")
         refresh_btn.clicked.connect(self.load_all)
-
         add_deal_btn = QPushButton("ثبت معامله جدید (قولنامه)")
         add_deal_btn.setObjectName("primary")
         add_deal_btn.clicked.connect(self._add_deal)
 
         top = QHBoxLayout()
-        top.addWidget(QLabel("فیلتر مشاور:"))
-        top.addWidget(self.agent_filter)
+        top.addWidget(QLabel("مشاور:")); top.addWidget(self.agent_filter)
+        top.addWidget(QLabel("وضعیت:")); top.addWidget(self.status_filter)
+        top.addWidget(QLabel("بازه:")); top.addWidget(self.period_combo)
+
         top.addStretch()
-        top.addWidget(add_deal_btn)
-        top.addWidget(refresh_btn)
+        top.addWidget(add_deal_btn); top.addWidget(refresh_btn)
 
         self.table = QTableWidget()
         self.table.setColumnCount(10)
         self.table.setHorizontalHeaderLabels(
-            ["#", "مشاور", "فایل", "مبلغ معامله", "درصد", "پورسانت", "پرداخت‌شده", "مانده", "وضعیت", "تاریخ قولنامه"]
-        )
+            ["#", "مشاور", "فایل", "مبلغ معامله", "درصد", "پورسانت", "پرداخت‌شده", "مانده", "وضعیت", "تاریخ قولنامه"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.doubleClicked.connect(lambda _: self._edit_deal())
 
-        finalize_btn = QPushButton("قطعی‌کردن معامله")
-        finalize_btn.clicked.connect(self._finalize)
-        unfinalize_btn = QPushButton("↩ بازگشت به در جریان")
-        unfinalize_btn.clicked.connect(self._unfinalize)
-        cancel_btn = QPushButton("لغو معامله")
-        cancel_btn.clicked.connect(self._cancel)
-        payments_btn = QPushButton("پرداخت‌ها")
-        payments_btn.clicked.connect(self._payments)
-        pdf_btn = QPushButton("صورتحساب PDF")
-        pdf_btn.clicked.connect(self._settlement_pdf)
-        contract_btn = QPushButton("چاپ قولنامه رسمی PDF")
-        contract_btn.setObjectName("primary")
+        finalize_btn = QPushButton("قطعی‌کردن"); finalize_btn.clicked.connect(self._finalize)
+        unfinalize_btn = QPushButton("↩ بازگشت به در جریان"); unfinalize_btn.clicked.connect(self._unfinalize)
+        cancel_btn = QPushButton("لغو معامله"); cancel_btn.clicked.connect(self._cancel)
+        payments_btn = QPushButton("پرداخت‌ها"); payments_btn.clicked.connect(self._payments)
+        pdf_btn = QPushButton("صورتحساب PDF"); pdf_btn.clicked.connect(self._settlement_pdf)
+        contract_btn = QPushButton("چاپ قولنامه رسمی PDF"); contract_btn.setObjectName("primary")
         contract_btn.clicked.connect(self._contract_pdf)
-
         actions = QHBoxLayout()
         for b in (finalize_btn, unfinalize_btn, cancel_btn, payments_btn, pdf_btn, contract_btn):
             actions.addWidget(b)
         actions.addStretch()
 
-        bal_title = QLabel("مانده پورسانت مشاوران")
-        bal_title.setStyleSheet("font-weight: bold; color: #a5b4fc; background: transparent;")
+        deals_w = QWidget(); deals_lay = QVBoxLayout(deals_w)
+        deals_lay.addLayout(actions)
+        deals_lay.addWidget(self.table)
+
         self.bal_table = QTableWidget()
         self.bal_table.setColumnCount(4)
         self.bal_table.setHorizontalHeaderLabels(["مشاور", "کارکرد (پورسانت قطعی)", "پرداخت‌شده", "مانده"])
         self.bal_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.bal_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.bal_table.setMaximumHeight(180)
         bal_pdf_btn = QPushButton("خروجی PDF مانده‌ها")
         bal_pdf_btn.clicked.connect(self._balances_pdf)
+        bal_w = QWidget(); bal_lay = QVBoxLayout(bal_w)
+        bal_lay.addWidget(self.bal_table); bal_lay.addWidget(bal_pdf_btn)
 
-        # --- دفتر حساب فردی مشاور ---
-        agent_row = QHBoxLayout()
-        agent_row.addWidget(QLabel("دفتر حساب مشاور:"))
+        ind_w = QWidget(); ind_lay = QVBoxLayout(ind_w)
+        a_row = QHBoxLayout()
+        a_row.addWidget(QLabel("مشاور:"))
         self.individual_combo = QComboBox()
-        self.individual_combo.setMinimumWidth(180)
+        self.individual_combo.setMinimumWidth(220)
         self.individual_combo.currentIndexChanged.connect(self._load_individual)
-        agent_row.addWidget(self.individual_combo)
-        agent_row.addStretch()
+        a_row.addWidget(self.individual_combo); a_row.addStretch()
         self.individual_label = QLabel("")
         self.individual_label.setStyleSheet("font-weight: bold; color: #f5a623; background: transparent;")
-        agent_row.addWidget(self.individual_label)
-        lay.addLayout(agent_row)
-
+        a_row.addWidget(self.individual_label)
+        ind_lay.addLayout(a_row)
         self.ind_table = QTableWidget()
         self.ind_table.setColumnCount(7)
-        self.ind_table.setHorizontalHeaderLabels(
-            ["#", "فایل", "مبلغ معامله", "درصد", "پورسانت", "وضعیت", "تاریخ"]
-        )
+        self.ind_table.setHorizontalHeaderLabels(["#", "فایل", "مبلغ معامله", "درصد", "پورسانت", "وضعیت", "تاریخ"])
         self.ind_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.ind_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.ind_table.setMaximumHeight(220)
-        lay.addWidget(QLabel("معامله‌های این مشاور:"))
-        lay.addWidget(self.ind_table)
+        ind_lay.addWidget(self.ind_table)
 
+        tabs = QTabWidget()
+        tabs.addTab(deals_w, "معامله‌ها")
+        tabs.addTab(bal_w, "مانده‌ها")
+        tabs.addTab(ind_w, "دفتر حساب فردی")
 
-        lay = QVBoxLayout(self)
-        lay.addLayout(top)
-        lay.addLayout(actions)
-        lay.addWidget(self.table)
-        lay.addWidget(bal_title)
-        lay.addWidget(self.bal_table)
-        lay.addWidget(bal_pdf_btn)
+        root = QVBoxLayout(self)
+        root.addLayout(top)
+        root.addWidget(tabs)
         self.load_all()
 
     def _contract_pdf(self):
@@ -484,27 +485,29 @@ class DealsTab(QWidget):
             handle_api_error(self, e, "خطا")
             return
         self._agent_map = {u["id"]: u for u in users}
+
+        def user_label(u):
+            label = u["full_name"] + (" (مدیر)" if u.get("role") == "admin" else "")
+            if not u.get("is_active"):
+                label += " — غیرفعال"
+            return label
+
         self.agent_filter.blockSignals(True)
         self.agent_filter.clear()
         self.agent_filter.addItem("همه مشاوران", None)
         for u in users:
-            label = u["full_name"] + (" (مدیر)" if u.get("role") == "admin" else "")
-            self.agent_filter.addItem(label, u["id"])
+            self.agent_filter.addItem(user_label(u), u["id"])
         self.agent_filter.blockSignals(False)
-        self.load_deals()
-        self.load_balances()
 
-        label = u["full_name"] + (" (مدیر)" if u.get("role") == "admin" else "")
-            if not u.get("is_active"):
-                label += " — غیرفعال"
-        # پر کردن کمبوی دفتر فردی
         self.individual_combo.blockSignals(True)
         self.individual_combo.clear()
         self.individual_combo.addItem("— انتخاب مشاور —", None)
         for u in users:
-            label = u["full_name"] + (" (مدیر)" if u.get("role") == "admin" else "")
-            self.individual_combo.addItem(label, u["id"])
+            self.individual_combo.addItem(user_label(u), u["id"])
         self.individual_combo.blockSignals(False)
+
+        self.load_deals()
+        self.load_balances()
 
 
     def load_deals(self):
@@ -513,6 +516,17 @@ class DealsTab(QWidget):
         except ApiError as e:
             handle_api_error(self, e, "خطا")
             return
+
+        # فیلتر بازه‌ی زمانی (قبل از رندر)
+        days = self.period_combo.currentData()
+        if days:
+            from datetime import date, timedelta
+            cutoff = date.today() - timedelta(days=days)
+            def _in_range(d):
+                cd = d.get("contract_date") or (d.get("created_at") or "")[:10]
+                return bool(cd) and cd >= cutoff.isoformat()
+            deals = [d for d in deals if _in_range(d)]
+
         self._deals_by_row = deals
         self.table.setRowCount(len(deals))
         for r, d in enumerate(deals):
@@ -528,6 +542,7 @@ class DealsTab(QWidget):
             self.table.setItem(r, 8, QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"])))
             self.table.setItem(r, 9, QTableWidgetItem(d.get("contract_date") or "—"))
 
+            
     def _load_individual(self):
         uid = self.individual_combo.currentData()
         if uid is None:
@@ -540,7 +555,7 @@ class DealsTab(QWidget):
             handle_api_error(self, e, "خطا")
             return
         self.ind_table.setRowCount(len(deals))
-        earned = paid = 0
+        earned = 0
         finalized = 0
         for r, d in enumerate(deals):
             self.ind_table.setItem(r, 0, QTableWidgetItem(str(d["id"])))
@@ -553,7 +568,6 @@ class DealsTab(QWidget):
             if d["status"] == "finalized":
                 earned += d["commission_amount"]
                 finalized += 1
-            # paid = d["paid_total"] - d.get("received_total", 0)
         paid_total = sum((d["paid_total"] - d.get("received_total", 0)) for d in deals
                          if d["status"] == "finalized")
         self.individual_label.setText(
@@ -619,7 +633,6 @@ class DealsTab(QWidget):
             return
         self.load_all()
 
-
     def _edit_deal(self):
         d = self._selected_deal()
         if not d:
@@ -640,7 +653,6 @@ class DealsTab(QWidget):
                     handle_api_error(self, e, "خطا")
                     return
                 self.load_all()
-                # بعد از بازگشت، فرم ویرایش را باز کن
                 fresh = next((x for x in self._deals_by_row if x["id"] == d["id"]), None)
                 if fresh:
                     DealEditDialog(fresh, on_saved=self.load_all).exec()
@@ -656,7 +668,6 @@ class DealsTab(QWidget):
             return
         agent = self._agent_map.get(d["agent_id"], {})
         PaymentsDialog(d, agent_name=agent.get("full_name") or "", on_changed=self.load_all).exec()
-
 
     def _settlement_pdf(self):
         d = self._selected_deal()

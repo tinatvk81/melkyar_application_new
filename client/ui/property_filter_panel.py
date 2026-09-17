@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox,
     QPushButton, QLabel, QMessageBox
 )
-
+from ui.widgets import PropertyTypeSelector
 from ui.property_form import DEAL_TYPE_LABELS, MoneyLineEdit
 from PySide6.QtCore import QTimer
 TRI_STATE_OPTIONS = [("", "فرقی نمی‌کند"), ("yes", "بله"), ("no", "خیر")]
@@ -105,17 +105,21 @@ class PropertyFilterPanel(QWidget):
         grid.addWidget(self.elevator_combo, 2, 1)
         grid.addWidget(QLabel("پارکینگ:"), 2, 2)
         grid.addWidget(self.parking_combo, 2, 3)
+        self.type_selector = PropertyTypeSelector()
+        grid.addWidget(QLabel("نوع ملک:"), 3, 0)
+        grid.addWidget(self.type_selector, 3, 1, 1, 3)
 
-        grid.addWidget(QLabel("قیمت از:"), 3, 0)
-        grid.addWidget(self.min_price_input, 3, 1)
-        grid.addWidget(QLabel("تا:"), 3, 2)
-        grid.addWidget(self.max_price_input, 3, 3)
-        grid.addWidget(apply_btn, 3, 4)
-        grid.addWidget(clear_btn, 3, 5)
 
-        grid.addWidget(QLabel("مرتب‌سازی بر اساس:"), 4, 0)
-        grid.addWidget(self.sort_by_combo, 4, 1)
-        grid.addWidget(self.sort_order_combo, 4, 2)
+        grid.addWidget(QLabel("قیمت از:"), 4, 0)
+        grid.addWidget(self.min_price_input, 4, 1)
+        grid.addWidget(QLabel("تا:"), 4, 2)
+        grid.addWidget(self.max_price_input, 4, 3)
+        grid.addWidget(apply_btn, 4, 4)
+        grid.addWidget(clear_btn, 4, 5)
+
+        grid.addWidget(QLabel("مرتب‌سازی بر اساس:"), 5, 0)
+        grid.addWidget(self.sort_by_combo, 5, 1)
+        grid.addWidget(self.sort_order_combo, 5, 2)
 
         search_row = QHBoxLayout()
         search_row.addWidget(QLabel("جستجوی آزاد:"))
@@ -188,5 +192,8 @@ class PropertyFilterPanel(QWidget):
 
         filters["sort_by"] = self.sort_by_combo.currentData()
         filters["sort_order"] = self.sort_order_combo.currentData()
-
+        types = self.type_selector.get_selected_keys()
+        if types:
+            filters["property_type"] = types[0]   # فعلاً اولین نوع (سرور تک‌مقداری می‌گیرد)
+            
         return filters
