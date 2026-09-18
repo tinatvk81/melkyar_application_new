@@ -281,6 +281,26 @@ class ApiClient:
         return resp.json()
 
 
+    # ---------- دفتر حساب (مشاور و مدیر) ----------
+    def get_my_ledger(self):
+        resp = requests.get(f"{self.server_url}/deals/my-ledger", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def get_user_ledger(self, user_id: int):
+        resp = requests.get(f"{self.server_url}/deals/ledger/{user_id}", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def download_my_ledger_pdf(self, save_path: str):
+        self._download_to_file(f"{self.server_url}/deals/my-ledger/pdf", save_path)
+
+    def download_user_ledger_pdf(self, user_id: int, save_path: str):
+        self._download_to_file(f"{self.server_url}/deals/ledger/{user_id}/pdf", save_path)
+
+    def download_all_ledgers_pdf(self, save_path: str):
+        self._download_to_file(f"{self.server_url}/deals/ledger-all/pdf", save_path)
+        
     # ---------- حسابداری پورسانت (admin) ----------
     def list_deals(self, agent_id=None, status=None):
         params = {}

@@ -2,13 +2,14 @@ from datetime import date
 
 import jdatetime
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel, QSizePolicy
 
 from ui.widgets import PersianSpinBox
+import settings_manager
 
 
 class JalaliDateEdit(QWidget):
-    """تاریخ شمسی — همیشه فعال؛ تایپ/چرخش دستی همان لحظه مقدار را معتبر می‌کند.
+    """تاریخ شمسی فشرده به شکل ۱۴۰۵/۰۷/۲۶ — در دیالوگ‌های باریک هم بدون بریدگی جا می‌شود.
     «خالی» یعنی بدون تاریخ (None)؛ هر تغییر دستی بعد از آن دوباره معتبر می‌شود."""
 
     def __init__(self, allow_empty: bool = True):
@@ -17,31 +18,52 @@ class JalaliDateEdit(QWidget):
         self.allow_empty = allow_empty
         self._loading = True
 
+        _f = max(1.0, settings_manager.get_font_size() / 13)
+        year_w, small_w = int(62 * _f), int(46 * _f)
+
         today = jdatetime.date.today()
         self.year_spin = PersianSpinBox(minimum=1300, maximum=1500)
-        self.year_spin.setValue(today.year)
         self.month_spin = PersianSpinBox(minimum=1, maximum=12)
-        self.month_spin.setValue(today.month)
         self.day_spin = PersianSpinBox(minimum=1, maximum=31)
-        for sp, w in ((self.year_spin, 95), (self.month_spin, 75), (self.day_spin, 75)):
-            sp.setMinimumWidth(w)
+
+        # علت باگ قبلی: استایل سراسری «min-width: 90px» باعث می‌شد سه اسپین + برچسب‌ها + دکمه‌ها
+        # در دیالوگ باریک جا نشوند و ویجت بیرون بزند. استایل محلیِ زیر آن حد را کوچک می‌کند.
+        self.year_spin.setMinimumWidth(year_w)
+        self.year_spin.setStyleSheet(f"QAbstractSpinBox {{ min-width: {year_w}px; padding: 4px 4px; }}")
+        self.month_spin.setMinimumWidth(small_w)
+        self.month_spin.setStyleSheet(f"QAbstractSpinBox {{ min-width: {small_w}px; padding: 4px 4px; }}")
+        self.day_spin.setMinimumWidth(small_w)
+        self.day_spin.setStyleSheet(f"QAbstractSpinBox {{ min-width: {small_w}px; padding: 4px 4px; }}")
+
+        self.year_spin.setValue(today.year)
+        self.month_spin.setValue(today.month)
         self.day_spin.setValue(today.day)
-        # for sp, w in ((self.year_spin, 95), (self.month_spin, 75), (self.day_spin, 75)):
-        #     sp.setMinimumWidth(w)
 
         today_btn = QPushButton("امروز")
-        today_btn.clicked.connect(self.set_today)
+        today_btn.setToolTip("انتخاب تاریخ امروز")
         clear_btn = QPushButton("خالی")
+        clear_btn.setToolTip("بدون تاریخ")
         clear_btn.setVisible(allow_empty)
+        today_btn.clicked.connect(self.set_today)
         clear_btn.clicked.connect(self.clear)
 
-        lay = QHBoxLayout()
+        sep1 = QLabel("/")
+        sep2 = QLabel("/")
+        for l in (sep1, sep2):
+            l.setStyleSheet("background: transparent;")
+
+        lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(QLabel("سال:")); lay.addWidget(self.year_spin)
-        lay.addWidget(QLabel("ماه:")); lay.addWidget(self.month_spin)
-        lay.addWidget(QLabel("روز:")); lay.addWidget(self.day_spin)
-        lay.addWidget(today_btn); lay.addWidget(clear_btn)
-        self.setLayout(lay)
+        lay.setSpacing(2)
+        lay.addWidget(self.year_spin, 1)
+        lay.addWidget(sep1)
+        lay.addWidget(self.month_spin)
+        lay.addWidget(sep2)
+        lay.addWidget(self.day_spin)
+        lay.addSpacing(8)
+        lay.addWidget(today_btn)
+        lay.addWidget(clear_btn)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         self._has_value = not allow_empty
         self.year_spin.valueChanged.connect(self._touched)

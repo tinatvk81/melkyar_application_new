@@ -66,6 +66,14 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 def on_startup():
     logger.info(f"سرور راه‌اندازی شد — نسخه {settings.APP_VERSION} — فایل لاگ: {log_file_path}")
 
+    try:
+        from app.db.ensure_columns import ensure_critical_columns
+        ensure_critical_columns()
+    except Exception:
+        # اگر هنوز دیتابیس/جدول‌ها ساخته نشده‌اند، اجازه بده سرور بالا بیاید؛
+        # alembic upgrade head همچنان مسیر اصلی ساخت جدول‌هاست.
+        logger.exception("بررسی/افزودن ستون‌های ضروری ناموفق بود")
+
     if settings.SMS_ENABLED:
         from apscheduler.schedulers.background import BackgroundScheduler
         from app.db.session import SessionLocal
@@ -83,7 +91,6 @@ def on_startup():
         scheduler.add_job(scheduled_job, "cron", hour=9, minute=0)  # هر روز ساعت ۹ صبح
         scheduler.start()
         logger.info("زمان‌بند یادآوری پیامکی فعال شد (هر روز ساعت ۹ صبح)")
-
 
 @app.get("/health")
 def health_check():

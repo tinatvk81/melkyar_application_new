@@ -349,6 +349,7 @@ class DealsTab(QWidget):
         self.setLayoutDirection(Qt.RightToLeft)
         self._deals_by_row = []
         self._agent_map = {}
+        self._ind_ledger = None
 
         self.agent_filter = QComboBox()
         self.agent_filter.addItem("همه مشاوران", None)
@@ -389,7 +390,7 @@ class DealsTab(QWidget):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.doubleClicked.connect(lambda _: self._edit_deal())
-
+        self.count_label = QLabel("")
         finalize_btn = QPushButton("قطعی‌کردن"); finalize_btn.clicked.connect(self._finalize)
         unfinalize_btn = QPushButton("↩ بازگشت به در جریان"); unfinalize_btn.clicked.connect(self._unfinalize)
         cancel_btn = QPushButton("لغو معامله"); cancel_btn.clicked.connect(self._cancel)
@@ -401,7 +402,7 @@ class DealsTab(QWidget):
         for b in (finalize_btn, unfinalize_btn, cancel_btn, payments_btn, pdf_btn, contract_btn):
             actions.addWidget(b)
         actions.addStretch()
-
+        actions.addWidget(self.count_label)
         deals_w = QWidget(); deals_lay = QVBoxLayout(deals_w)
         deals_lay.addLayout(actions)
         deals_lay.addWidget(self.table)
@@ -423,16 +424,44 @@ class DealsTab(QWidget):
         self.individual_combo.setMinimumWidth(220)
         self.individual_combo.currentIndexChanged.connect(self._load_individual)
         a_row.addWidget(self.individual_combo); a_row.addStretch()
+        ind_pdf_btn = QPushButton("PDF دفتر این مشاور")
+        ind_pdf_btn.clicked.connect(self._ind_ledger_pdf)
+        a_row.addWidget(ind_pdf_btn)
+        all_pdf_btn = QPushButton("PDF دفتر همه (یک فایل)")
+        all_pdf_btn.setObjectName("primary")
+        all_pdf_btn.clicked.connect(self._all_ledgers_pdf)
+        a_row.addWidget(all_pdf_btn)
         self.individual_label = QLabel("")
         self.individual_label.setStyleSheet("font-weight: bold; color: #f5a623; background: transparent;")
         a_row.addWidget(self.individual_label)
         ind_lay.addLayout(a_row)
+
         self.ind_table = QTableWidget()
-        self.ind_table.setColumnCount(7)
-        self.ind_table.setHorizontalHeaderLabels(["#", "فایل", "مبلغ معامله", "درصد", "پورسانت", "وضعیت", "تاریخ"])
+        self.ind_table.setColumnCount(9)
+        self.ind_table.setHorizontalHeaderLabels(
+            ["#", "فایل", "مبلغ معامله", "درصد", "پورسانت", "پرداخت‌شده", "مانده", "وضعیت", "تاریخ"])
         self.ind_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.ind_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.ind_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.ind_table.currentCellChanged.connect(self._fill_ind_payments)
         ind_lay.addWidget(self.ind_table)
+
+        b_row = QHBoxLayout()
+        b_row.addWidget(QLabel("پرداخت‌های معاملهٔ انتخاب‌شده:"))
+        receipt_btn = QPushButton("مشاهده رسید")
+        receipt_btn.clicked.connect(self._view_ind_receipt)
+        b_row.addWidget(receipt_btn)
+        b_row.addStretch()
+        ind_lay.addLayout(b_row)
+        self.ind_pay_table = QTableWidget()
+        self.ind_pay_table.setColumnCount(5)
+        self.ind_pay_table.setHorizontalHeaderLabels(["مبلغ", "نوع", "تاریخ", "توضیح", "رسید"])
+        self.ind_pay_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.ind_pay_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.ind_pay_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.ind_pay_table.setMaximumHeight(170)
+        ind_lay.addWidget(self.ind_pay_table)
+
 
         tabs = QTabWidget()
         tabs.addTab(deals_w, "معامله‌ها")
@@ -510,12 +539,106 @@ class DealsTab(QWidget):
         self.load_balances()
 
 
+
+    def _load_individual(self):
+        uid = self.individual_combo.currentData()
+        self.ind_table.setRowCount(0)
+        self.ind_pay_table.setRowCount(0)
+        self.individual_label.setText("")
+        self._ind_ledger = None
+        if uid is None:
+            return
+        try:
+            self._ind_ledger = api_client.get_user_ledger(uid)
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            return
+        L = self._ind_ledger
+        deals = L.get("deals") or []
+        self.ind_table.setRowCount(len(deals))
+        for r, d in enumerate(deals):
+            self.ind_table.setItem(r, 0, QTableWidgetItem(str(d["id"])))
+            self.ind_table.setItem(r, 1, QTableWidgetItem(f"#{d['property_id']}"))
+            self.ind_table.setItem(r, 2, QTableWidgetItem(_money(d["deal_amount"])))
+            self.ind_table.setItem(r, 3, QTableWidgetItem(f"{float(d['commission_percent']):g}٪"))
+            self.ind_table.setItem(r, 4, QTableWidgetItem(_money(d["commission_amount"])))
+            self.ind_table.setItem(r, 5, QTableWidgetItem(_money(d["paid_total"])))
+            self.ind_table.setItem(r, 6, QTableWidgetItem(_money(d["remaining"])))
+            self.ind_table.setItem(r, 7, QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"])))
+            self.ind_table.setItem(r, 8, QTableWidgetItem(d.get("contract_date") or "—"))
+        self.individual_label.setText(
+            f"معامله: {L['deals_count']} | قطعی: {L['finalized_count']} | کارکرد: {_money(L['earned'])} | "
+            f"پرداخت‌شده: {_money(L['paid_total'])} | مانده: {_money(L['remaining'])} تومان")
+
+    def _fill_ind_payments(self, *_):
+        row = self.ind_table.currentRow()
+        pays = []
+        if self._ind_ledger and 0 <= row < len(self._ind_ledger.get("deals") or []):
+            pays = self._ind_ledger["deals"][row].get("payments") or []
+        KIND_FA = {"to_agent": "به مشاور →", "from_agent": "از مشاور ←"}
+        self.ind_pay_table.setRowCount(len(pays))
+        for r, p in enumerate(pays):
+            self.ind_pay_table.setItem(r, 0, QTableWidgetItem(_money(p["amount"])))
+            self.ind_pay_table.setItem(r, 1, QTableWidgetItem(KIND_FA.get(p.get("kind", "to_agent"), "—")))
+            self.ind_pay_table.setItem(r, 2, QTableWidgetItem(p.get("paid_date") or "—"))
+            self.ind_pay_table.setItem(r, 3, QTableWidgetItem(p.get("note") or ""))
+            self.ind_pay_table.setItem(r, 4, QTableWidgetItem("دارد" if p.get("has_receipt") else "—"))
+
+    def _view_ind_receipt(self):
+        prow = self.ind_pay_table.currentRow()
+        drow = self.ind_table.currentRow()
+        if drow < 0 or prow < 0 or not self._ind_ledger or drow >= len(self._ind_ledger.get("deals") or []):
+            QMessageBox.information(self, "توجه", "ابتدا معامله و پرداخت را انتخاب کنید.")
+            return
+        pays = self._ind_ledger["deals"][drow].get("payments") or []
+        if prow >= len(pays) or not pays[prow].get("has_receipt"):
+            QMessageBox.information(self, "توجه", "برای این پرداخت رسیدی ثبت نشده است.")
+            return
+        p = pays[prow]
+        path = os.path.join(tempfile.gettempdir(), f"receipt_{p['id']}.jpg")
+        try:
+            api_client.download_payment_receipt(p["id"], path)
+            os.startfile(path)
+        except ApiError as e:
+            handle_api_error(self, e, "خطا در دریافت رسید")
+
+    def _ind_ledger_pdf(self):
+        uid = self.individual_combo.currentData()
+        if uid is None:
+            QMessageBox.information(self, "توجه", "ابتدا مشاور را انتخاب کنید.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "ذخیره دفتر حساب", f"ledger-{uid}.pdf", "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            api_client.download_user_ledger_pdf(uid, path)
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            return
+        QMessageBox.information(self, "موفق", f"ذخیره شد:\n{path}")
+
+    def _all_ledgers_pdf(self):
+        path, _ = QFileDialog.getSaveFileName(self, "ذخیره دفتر همه", "all-ledgers.pdf", "PDF (*.pdf)")
+        if not path:
+            return
+        try:
+            api_client.download_all_ledgers_pdf(path)
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            return
+        QMessageBox.information(self, "موفق", f"ذخیره شد:\n{path}")
+
     def load_deals(self):
         try:
             deals = api_client.list_deals(agent_id=self.agent_filter.currentData())
         except ApiError as e:
             handle_api_error(self, e, "خطا")
             return
+
+        # فیلتر وضعیت — قبلاً هیچ‌جا اعمال نمی‌شد و برای همین تغییرش اثری نداشت
+        st = self.status_filter.currentData()
+        if st:
+            deals = [d for d in deals if d.get("status") == st]
 
         # فیلتر بازه‌ی زمانی (قبل از رندر)
         days = self.period_combo.currentData()
@@ -542,38 +665,12 @@ class DealsTab(QWidget):
             self.table.setItem(r, 8, QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"])))
             self.table.setItem(r, 9, QTableWidgetItem(d.get("contract_date") or "—"))
 
-            
-    def _load_individual(self):
-        uid = self.individual_combo.currentData()
-        if uid is None:
-            self.ind_table.setRowCount(0)
-            self.individual_label.setText("")
-            return
-        try:
-            deals = api_client.list_deals(agent_id=uid)
-        except ApiError as e:
-            handle_api_error(self, e, "خطا")
-            return
-        self.ind_table.setRowCount(len(deals))
-        earned = 0
-        finalized = 0
-        for r, d in enumerate(deals):
-            self.ind_table.setItem(r, 0, QTableWidgetItem(str(d["id"])))
-            self.ind_table.setItem(r, 1, QTableWidgetItem(f"#{d['property_id']}"))
-            self.ind_table.setItem(r, 2, QTableWidgetItem(_money(d["deal_amount"])))
-            self.ind_table.setItem(r, 3, QTableWidgetItem(f"{d['commission_percent']:g}٪"))
-            self.ind_table.setItem(r, 4, QTableWidgetItem(_money(d["commission_amount"])))
-            self.ind_table.setItem(r, 5, QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"])))
-            self.ind_table.setItem(r, 6, QTableWidgetItem(d.get("contract_date") or "—"))
-            if d["status"] == "finalized":
-                earned += d["commission_amount"]
-                finalized += 1
-        paid_total = sum((d["paid_total"] - d.get("received_total", 0)) for d in deals
-                         if d["status"] == "finalized")
-        self.individual_label.setText(
-            f"معامله: {len(deals)} | قطعی: {finalized} | کارکرد: {_money(earned)} | "
-            f"پرداخت‌شده: {_money(paid_total)} | مانده: {_money(earned - paid_total)} تومان"
-        )
+        if not deals:
+            self.count_label.setText("هیچ معامله‌ای با این فیلترها پیدا نشد — «بازه» را روی «همهٔ زمان‌ها» هم تست کن.")
+        else:
+            self.count_label.setText(f"تعداد: {len(deals)} معامله")
+
+
 
     def load_balances(self):
         try:

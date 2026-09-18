@@ -70,3 +70,18 @@ def set_theme(mode: str) -> None:
     s = load_settings()
     s["theme"] = mode
     save_settings(s)
+
+
+DEFAULT_FONT_SIZE = 13  # معادل 10pt قبلی
+
+def get_font_size() -> int:
+    try:
+        v = int(load_settings().get("font_size") or 0)
+    except (TypeError, ValueError):
+        v = 0
+    return v if 12 <= v <= 24 else DEFAULT_FONT_SIZE
+
+def set_font_size(size: int) -> None:
+    s = load_settings()
+    s["font_size"] = max(12, min(24, int(size)))
+    save_settings(s)

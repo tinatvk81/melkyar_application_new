@@ -130,16 +130,42 @@ QPushButton#bellLabel { background: #fff7e8; border: 1px solid rgba(245,166,35,0
 
 THEMES = {"dark": DARK_QSS, "light": LIGHT_QSS}
 
-
-def apply_persian_rtl_style(app: QApplication, mode: str = "dark"):
+def apply_persian_rtl_style(app: QApplication, mode: str = "dark", font_size: int | None = None):
+    """تم + فونت پایه. اندازه فونت (۱۲ تا ۲۴ پیکسل) فقط از یک منبع تعیین می‌شود:
+    app.setFont. اندازه در خود QSS هاردکد نمی‌شود تا همه‌چیز یکدست بزرگ/کوچک شود."""
+    import settings_manager  # ایمپورت محلی — از چرخه‌ی ایمپورت جلوگیری می‌کند
     app.setLayoutDirection(Qt.RightToLeft)
 
+    if font_size is None:
+        font_size = settings_manager.get_font_size()
+    font_size = max(12, min(24, int(font_size)))
+
+    family = None
     if os.path.exists(FONT_PATH):
         font_id = QFontDatabase.addApplicationFont(FONT_PATH)
         families = QFontDatabase.applicationFontFamilies(font_id)
         if families:
-            app.setFont(QFont(families[0], 10))
-    else:
-        app.setFont(QFont("Tahoma", 10))
+            family = families[0]
+    f = QFont(family or "Tahoma")
+    f.setPixelSize(font_size)
+    app.setFont(f)
 
-    app.setStyleSheet(THEMES.get(mode, DARK_QSS))
+    qss = THEMES.get(mode, DARK_QSS)
+    # اندازه‌ی 10pt از QSS حذف می‌شود تا فونت اپلیکیشن (اسلایدر تنظیمات) حاکم باشد.
+    # تیتر «ملک‌یار» (13px) عمداً ثابت می‌ماند — لوگو نباید با فونت بزرگ شود.
+    qss = qss.replace("font-size: 10pt;", "")
+    app.setStyleSheet(qss)
+    return font_size
+
+# def apply_persian_rtl_style(app: QApplication, mode: str = "dark"):
+#     app.setLayoutDirection(Qt.RightToLeft)
+
+#     if os.path.exists(FONT_PATH):
+#         font_id = QFontDatabase.addApplicationFont(FONT_PATH)
+#         families = QFontDatabase.applicationFontFamilies(font_id)
+#         if families:
+#             app.setFont(QFont(families[0], 10))
+#     else:
+#         app.setFont(QFont("Tahoma", 10))
+
+#     app.setStyleSheet(THEMES.get(mode, DARK_QSS))

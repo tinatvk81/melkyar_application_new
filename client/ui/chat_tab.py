@@ -1,22 +1,23 @@
-from PySide6.QtCore import Qt, QTimer, QPoint
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QListWidget, QListWidgetItem, QLabel,
     QLineEdit, QPushButton, QScrollArea, QFrame, QMessageBox, QDialog,
     QFormLayout, QTextEdit, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView,
+    QAbstractItemView, QApplication,
 )
 
 from api_client import api_client, ApiError
 from session import handle_api_error
+import settings_manager
 
-
-from settings_manager import get_theme
 
 class Bubble(QFrame):
+    """حباب پیام — دو-رنگ مثل بله/تلگرام: پیام خودم زرد، طرف مقابل آبی/سرمه‌ای (متناسب با تم)."""
+
     def __init__(self, text, mine: bool, time_txt="", name=""):
         super().__init__()
-        light = get_theme() == "light"
-        # سؤال کاربر = زرد / پاسخ = آبی ملایم (روشن) یا سبز-تیرهٔ ملایم (تاریک)
+        light = settings_manager.get_theme() == "light"
         if mine:
             bg = "#f5d67a" if light else "#8a6d1f"
             txtc = "#241300" if light else "#fff3cf"
@@ -50,15 +51,24 @@ class Bubble(QFrame):
 
     @staticmethod
     def _chat_font():
-        from PySide6.QtWidgets import QApplication
+        """فونت چت = فونت برنامه ± دلتای A−/A+.
+        با هر دو حالت (point یا pixel) کار می‌کند — چون styles.py حالا فونت را
+        با setPixelSize تنظیم می‌کند، pointSize() مقدار -1 برمی‌گرداند و
+        نسخه‌ی قبلی این تابع با آن فونت نامعتبر می‌ساخت."""
         app = QApplication.instance()
-        f = app.font()
-        f = type(f)(f)
-        f.setPointSize(int(f.pointSize() + getattr(app, "chat_font_delta", 0)))
+        f = QFont(app.font())
+        delta = getattr(app, "chat_font_delta", 0)
+        if delta:
+            if f.pointSize() > 0:
+                f.setPointSize(max(6, f.pointSize() + delta))
+            elif f.pixelSize() > 0:
+                f.setPixelSize(max(8, f.pixelSize() + delta))
         return f
+
 
 class FaqDialog(QDialog):
     """مدیریت سؤالات متداول — فقط مدیر."""
+
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
@@ -116,11 +126,18 @@ class FaqDialog(QDialog):
         a.setFixedHeight(80)
         form.addRow("سؤال:", q)
         form.addRow("پاسخ:", a)
-        ok = QPushButton("ذخیره"); ok.setObjectName("primary")
+        ok = QPushButton("ذخیره")
+        ok.setObjectName("primary")
         ok.clicked.connect(dlg.accept)
-        cancel = QPushButton("انصراف"); cancel.clicked.connect(dlg.reject)
-        row = QHBoxLayout(); row.addStretch(); row.addWidget(ok); row.addWidget(cancel)
-        lay = QVBoxLayout(dlg); lay.addLayout(form); lay.addLayout(row)
+        cancel = QPushButton("انصراف")
+        cancel.clicked.connect(dlg.reject)
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(ok)
+        row.addWidget(cancel)
+        lay = QVBoxLayout(dlg)
+        lay.addLayout(form)
+        lay.addLayout(row)
         if dlg.exec() != QDialog.Accepted:
             return None
         return q.text().strip(), a.toPlainText().strip()
@@ -168,6 +185,7 @@ class FaqDialog(QDialog):
             return
         self._reload()
 
+
 class ChatTab(QWidget):
     """گفت‌وگو: ربات پاسخ‌گو (اولین مخاطب) + چت آزاد بین همهٔ کاربران."""
 
@@ -183,7 +201,7 @@ class ChatTab(QWidget):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
 
-        # --- مخاطبان (ربات = آیتم اول) ---
+        # --- ستون مخاطبان (ربات = آیتم اول) ---
         left = QVBoxLayout()
         row = QHBoxLayout()
         row.addWidget(QLabel("مخاطبان"))
@@ -197,12 +215,12 @@ class ChatTab(QWidget):
         left.addLayout(row)
 
         self.contacts_list = QListWidget()
-        self.contacts_list.setFixedWidth(200)
+        self.contacts_list.setFixedWidth(max(200, int(200 * settings_manager.get_font_size() / 13)))
         self.contacts_list.currentRowChanged.connect(self._select_peer)
         left.addWidget(self.contacts_list, 1)
         lay.addLayout(left)
 
-        # --- گفت‌وگو ---
+        # --- ستون گفت‌وگو ---
         right = QVBoxLayout()
         self.peer_label = QLabel("🤖 چت‌بات ملک‌یار — سؤالت را بپرس")
         self.peer_label.setStyleSheet("font-weight: bold; color: #f5a623; background: transparent;")
@@ -218,7 +236,7 @@ class ChatTab(QWidget):
         self.scroll.setWidget(self.bubbles_holder)
         right.addWidget(self.scroll, 1)
 
-        # چیپ‌های پیشنهادی + تنظیم فونت (فقط وقتی ربات انتخاب است)
+        # چیپ‌های پیشنهادی + دکمه‌های اندازه فونت (فقط وقتی ربات انتخاب است)
         chips_row = QHBoxLayout()
         for q in ["امکانات برنامه چیست؟", "چطور فایل ثبت کنم؟", "رمزم را فراموش کردم"]:
             b = QPushButton(q)
@@ -227,24 +245,40 @@ class ChatTab(QWidget):
             chips_row.addWidget(b)
         chips_row.addWidget(QLabel("|"))
         font_dn = QPushButton("A−")
-        font_dn.setObjectName("chip"); font_dn.setFixedWidth(38)
+        font_dn.setObjectName("chip")
+        font_dn.setFixedWidth(38)
         font_up = QPushButton("A+")
-        font_up.setObjectName("chip"); font_up.setFixedWidth(38)
+        font_up.setObjectName("chip")
+        font_up.setFixedWidth(38)
         font_dn.clicked.connect(lambda: self._change_font(-1))
         font_up.clicked.connect(lambda: self._change_font(1))
         chips_row.addWidget(font_dn)
         chips_row.addWidget(font_up)
-        chips_row.addStretch()                    # ← stretch آخر
+        chips_row.addStretch()
         self.chips_widget = QWidget()
         self.chips_widget.setLayout(chips_row)
         right.addWidget(self.chips_widget)
 
+        # --- نوار ورودی پیام ---
+        input_row = QHBoxLayout()
+        self.msg_input = QLineEdit()
+        self.msg_input.setPlaceholderText("پیام خود را بنویسید و Enter بزنید…")
+        self.msg_input.returnPressed.connect(self._on_enter)
+        send_btn = QPushButton("ارسال")
+        send_btn.setObjectName("primary")
+        send_btn.clicked.connect(self._on_enter)
+        input_row.addWidget(self.msg_input, 1)
+        input_row.addWidget(send_btn)
+        right.addLayout(input_row)
+
+        lay.addLayout(right, 1)
+        self.load_contacts()
+        self._load_bot_greeting()
 
     def _change_font(self, delta: int):
         app = QApplication.instance()
         cur = getattr(app, "chat_font_delta", 0)
         app.chat_font_delta = max(-3, min(6, cur + delta))
-        # رندر مجدد حباب‌های موجود
         if self.current_peer is not None:
             self.load_conversation()
         else:
@@ -316,17 +350,12 @@ class ChatTab(QWidget):
         sb = self.scroll.verticalScrollBar()
         QTimer.singleShot(50, lambda: sb.setValue(sb.maximum()))
 
-
     def _add_bubble(self, text, mine: bool, time_txt="", name=""):
-        wrap = QWidget()
-        w_lay = QHBoxLayout(wrap)
-        w_lay.setContentsMargins(20 if mine else 0, 3, 0 if mine else 20, 3)
         b = Bubble(text, mine, time_txt, name)
-        b.setMaximumWidth(620)          # حباب هرگز تمام عرض نمی‌شود
-        w_lay.addWidget(b, 0 if mine else 1, Qt.AlignLeft if mine else Qt.AlignRight)
-        self.bubbles_lay.insertWidget(self.bubbles_lay.count() - 1, wrap)
+        self.bubbles_lay.insertWidget(self.bubbles_lay.count() - 1, b)
         sb = self.scroll.verticalScrollBar()
         QTimer.singleShot(30, lambda: sb.setValue(sb.maximum()))
+
     # ---------- ارسال ----------
     def _on_enter(self):
         text = self.msg_input.text().strip()
@@ -354,119 +383,3 @@ class ChatTab(QWidget):
             handle_api_error(self, e, "خطا در ارسال")
             return
         self.load_conversation()
-
-        
-# class BotPanel(QFrame):
-    # """پنل شناور چت‌بات — بالای دکمهٔ ربات باز می‌شود و با هدر جابه‌جا می‌شود."""
-
-    # def __init__(self, parent=None):
-    #     super().__init__(parent)
-    #     self.setObjectName("botPanel")
-    #     self.setLayoutDirection(Qt.RightToLeft)
-    #     self.setFixedSize(380, 520)
-    #     self._drag_pos = None
-
-    #     lay = QVBoxLayout(self)
-    #     lay.setContentsMargins(0, 0, 0, 0)
-    #     lay.setSpacing(0)
-
-    #     # --- هدر (دستهٔ جابه‌جایی) ---
-    #     header = QFrame()
-    #     header.setObjectName("botPanelHeader")
-    #     header.setCursor(Qt.SizeAllCursor)
-    #     h = QHBoxLayout(header)
-    #     h.setContentsMargins(14, 10, 10, 10)
-    #     title = QLabel("🤖 چت‌بات ملک‌یار — پاسخگوی سوالات شماست")
-    #     h.addWidget(title, 1)
-    #     if api_client.role == "admin":
-    #         faq_btn = QPushButton("⚙️")
-    #         faq_btn.setObjectName("botClose")
-    #         faq_btn.setFixedSize(28, 28)
-    #         faq_btn.setToolTip("مدیریت سؤالات متداول")
-    #         faq_btn.clicked.connect(lambda: FaqDialog().exec())
-    #         h.addWidget(faq_btn)
-    #     close_btn = QPushButton("✕")
-    #     close_btn.setObjectName("botClose")
-    #     close_btn.setFixedSize(28, 28)
-    #     close_btn.clicked.connect(self.hide)
-    #     h.addWidget(close_btn)
-    #     lay.addWidget(header)
-
-    #     # --- حباب‌ها ---
-    #     self.scroll = QScrollArea()
-    #     self.scroll.setWidgetResizable(True)
-    #     self.scroll.setFrameShape(QFrame.NoFrame)
-    #     self.holder = QWidget()
-    #     self.hlay = QVBoxLayout(self.holder)
-    #     self.hlay.setContentsMargins(8, 8, 8, 8)
-    #     self.hlay.addStretch()
-    #     self.scroll.setWidget(self.holder)
-    #     lay.addWidget(self.scroll, 1)
-
-    #     # --- چیپ‌های پیشنهادی ---
-    #     chips_row = QHBoxLayout()
-    #     for q in ["امکانات برنامه چیست؟", "چطور فایل ثبت کنم؟", "رمزم را فراموش کردم"]:
-    #         b = QPushButton(q)
-    #         b.setObjectName("chip")
-    #         b.clicked.connect(lambda _=False, t=q: self._send(t))
-    #         chips_row.addWidget(b)
-    #     chips_row.addStretch()
-    #     chips_widget = QWidget()
-    #     chips_widget.setLayout(chips_row)
-    #     lay.addWidget(chips_widget)
-
-    #     # --- ورودی ---
-    #     row = QHBoxLayout()
-    #     row.setContentsMargins(8, 6, 8, 8)
-    #     self.msg_input = QLineEdit()
-    #     self.msg_input.setPlaceholderText("پیام خود را بنویسید و Enter بزنید…")
-    #     self.msg_input.returnPressed.connect(lambda: self._send())
-    #     send_btn = QPushButton("ارسال")
-    #     send_btn.setObjectName("primary")
-    #     send_btn.clicked.connect(lambda: self._send())
-    #     row.addWidget(self.msg_input, 1)
-    #     row.addWidget(send_btn)
-    #     lay.addLayout(row)
-
-    #     self._greet()
-
-    # # ---------- جابه‌جایی پنل با هدر ----------
-    # def _header(self):
-    #     return self.findChild(QFrame, "") if False else None
-
-    # def mousePressEvent(self, event):
-    #     if event.button() == Qt.LeftButton and event.position().y() <= 46:
-    #         self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-    #     else:
-    #         self._drag_pos = None
-
-    # def mouseMoveEvent(self, event):
-    #     if self._drag_pos is not None and event.buttons() & Qt.LeftButton:
-    #         self.move(event.globalPosition().toPoint() - self._drag_pos)
-
-    # def mouseReleaseEvent(self, event):
-    #     self._drag_pos = None
-
-    # # ---------- چت‌بات ----------
-    # def _greet(self):
-    #     self._bubble("سلام! 👋 سؤالت را دربارهٔ ملک‌یار بپرس — فایل، حسابداری، قرارداد و…", False)
-
-    # def _bubble(self, text, mine: bool):
-    #     b = Bubble(text, mine, "", "" if mine else "چت‌بات")
-    #     self.hlay.insertWidget(self.hlay.count() - 1, b)
-    #     sb = self.scroll.verticalScrollBar()
-    #     QTimer.singleShot(30, lambda: sb.setValue(sb.maximum()))
-
-    # def _send(self, text=None):
-    #     if text is None:
-    #         text = self.msg_input.text().strip()
-    #     if not text:
-    #         return
-    #     self.msg_input.clear()
-    #     self._bubble(text, True)
-    #     try:
-    #         res = api_client.bot_ask(text)
-    #     except ApiError as e:
-    #         handle_api_error(self, e, "خطای ربات")
-    #         return
-    #     self._bubble(res["answer"], False)

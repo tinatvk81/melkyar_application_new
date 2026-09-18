@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QComboBox, QHeaderView, QStackedWidget
 )
 import math
-
+from ui.my_ledger_tab import MyLedgerTab
 from PySide6.QtWidgets import QApplication
 from ui.styles import apply_persian_rtl_style
 import settings_manager
@@ -536,17 +536,24 @@ class MainWindow(QMainWindow):
         self._bell_btn.setCursor(Qt.PointingHandCursor)
         self._bell_btn.clicked.connect(self._open_notifications)
 
-
         # --- دکمهٔ تم روشن/تاریک ---
         self._theme_btn = QPushButton("☀️ روشن" if settings_manager.get_theme() == "dark" else "🌙 تاریک")
         self._theme_btn.setObjectName("chip")
         self._theme_btn.setCursor(Qt.PointingHandCursor)
         self._theme_btn.clicked.connect(self._toggle_theme)
 
+        # --- دکمهٔ تنظیمات (تم + اندازه فونت در یک پنجره) ---
+        self._settings_btn = QPushButton("⚙️ تنظیمات")
+        self._settings_btn.setObjectName("chip")
+        self._settings_btn.setCursor(Qt.PointingHandCursor)
+        self._settings_btn.clicked.connect(self._open_settings)
+
         # --- سایدبار + صفحه‌ها ---
         self._sidebar = QListWidget()
         self._sidebar.setObjectName("sideNav")
-        self._sidebar.setFixedWidth(210)
+        # عرض سایدبار با اندازه فونت مقیاس می‌شود تا در فونت بزرگ، متن‌ها بیرون نزنند
+        _fs = settings_manager.get_font_size()
+        self._sidebar.setFixedWidth(max(210, int(210 * _fs / 13)))
         self._stack = QStackedWidget()
         self._index = {}
 
@@ -570,6 +577,9 @@ class MainWindow(QMainWindow):
                 ("💰  حسابداری پورسانت", DealsTab(), "deals"),
                 ("🕘  تاریخچه‌ی فعالیت‌ها", ActivityLogTab(), "activity"),
             ]
+        else:
+            # مشاور به حسابداری دسترسی ندارد — دفتر خودش را در «حساب من» می‌بیند
+            pages.append(("💰  حساب من", MyLedgerTab(), "myledger"))
 
         for label, widget, key in pages:
             self._stack.addWidget(widget)
@@ -585,6 +595,7 @@ class MainWindow(QMainWindow):
         side_lay.addWidget(side_title)
         side_lay.addWidget(self._bell_btn)
         side_lay.addWidget(self._theme_btn)
+        side_lay.addWidget(self._settings_btn)
         side_lay.addWidget(self._sidebar, 1)
 
         central = QWidget()
@@ -594,23 +605,19 @@ class MainWindow(QMainWindow):
         lay.addLayout(side_lay)
         lay.addWidget(self._stack, 1)
         self.setCentralWidget(central)
-        
+
         self._notif_timer = QTimer(self)
         self._notif_timer.timeout.connect(self._refresh_bell)
         self._notif_timer.start(60_000)
         QTimer.singleShot(800, self._refresh_bell)
 
-
-        # --- دکمهٔ شناور چت‌بات (گوشه پایین-چپ مثل اپ‌های سایت) ---
+        # --- دکمهٔ شناور چت‌بات (غیرفعال) ---
         self._bot_fab = QPushButton("🤖")
         self._bot_fab.setObjectName("botFab")
         self._bot_fab.setFixedSize(56, 56)
         self._bot_fab.setCursor(Qt.PointingHandCursor)
         self._bot_fab.setToolTip("کاتدر فروش هل — سؤال بپرس")
-        # self._bot_fab.clicked.connect(self._open_bot)
-        # self._bot_fab.setParent(self)
-        # self._bot_fab.move(20, self.height() - 90)
-        # self._bot_fab.show()
+
 
     # def _open_bot(self):
     #     from ui.chat_tab import BotPanel
@@ -654,6 +661,13 @@ class MainWindow(QMainWindow):
         NotificationsDialog(on_changed=self._refresh_bell).exec()
         self._refresh_bell()
 
+    def _open_settings(self):
+        from ui.settings_dialog import SettingsDialog
+        SettingsDialog(self).exec()
+        # اگر تم یا فونت در دیالوگ عوض شد، اینجا همگام شود
+        self._theme_btn.setText("☀️ روشن" if settings_manager.get_theme() == "dark" else "🌙 تاریک")
+        self._sidebar.setFixedWidth(max(210, int(210 * settings_manager.get_font_size() / 13)))
+
 
     def _toggle_theme(self):
         new_mode = "light" if settings_manager.get_theme() == "dark" else "dark"
@@ -661,11 +675,14 @@ class MainWindow(QMainWindow):
         apply_persian_rtl_style(QApplication.instance(), mode=new_mode)
         self._theme_btn.setText("☀️ روشن" if new_mode == "dark" else "🌙 تاریک")
 
-        # رفرش حباب‌های چت با تم جدید
+        # رفرش حباب‌های چت با تم جدید (هم گفت‌وگوی انسانی، هم صفحه‌ی ربات)
         try:
             for i in range(self._stack.count()):
                 wd = self._stack.widget(i)
-                if isinstance(wd, ChatTab) and wd.current_peer is not None:
-                    wd.load_conversation()
+                if isinstance(wd, ChatTab):
+                    if wd.current_peer is not None:
+                        wd.load_conversation()
+                    else:
+                        wd._load_bot_greeting()
         except Exception:
             pass

@@ -31,13 +31,15 @@ class FollowUpDialog(QDialog):
         self.time_check = QCheckBox("تعیین ساعت")
         self.time_edit = QTimeEdit(QTime(9, 0))
         self.time_edit.setDisplayFormat("HH:mm")
+        # ساعت همیشه چپ‌به‌راست — در RTL بخش‌های ساعت/دقیقه قرینه و خراب دیده می‌شدند
+        self.time_edit.setLayoutDirection(Qt.LeftToRight)
+        self.time_edit.setFixedWidth(90)
         self.time_edit.setEnabled(False)
-        self.time_edit.setMinimumWidth(110)
         self.time_check.toggled.connect(self.time_edit.setEnabled)
         time_row = QHBoxLayout()
         time_row.addWidget(self.time_check)
         time_row.addWidget(self.time_edit)
-        
+        time_row.addStretch()
         time_wrap = QWidget(); time_wrap.setLayout(time_row)
 
         self.prop_combo = QComboBox()
@@ -76,7 +78,7 @@ class FollowUpDialog(QDialog):
         row = QHBoxLayout(); row.addStretch(); row.addWidget(save_btn); row.addWidget(cancel_btn)
 
         lay = QVBoxLayout(self); lay.addLayout(form); lay.addLayout(row)
-
+        
     def _save(self):
         title = self.title_input.text().strip()
         if not title:
