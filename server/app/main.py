@@ -3,16 +3,16 @@ import logging
 from app.core.logging_config import setup_logging
 log_file_path = setup_logging()
 logger = logging.getLogger(__name__)
-from app.api.routes import (
-    auth, properties, users, version, import_excel, property_images,
-    reports, activity_logs, deals, client_requests, follow_ups,
-    notifications, filter_presets,chat,bot,
-)
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
-
+from app.api.routes import (
+    auth, properties, users, version, import_excel, property_images,
+    reports, activity_logs, deals, client_requests, follow_ups,
+    notifications, filter_presets,chat,bot, installers,
+)
 app = FastAPI(
     title="سامانه‌ی مدیریت فایل‌های ملکی",
     # مستندات خودکار API فقط در حالت توسعه (DEBUG=true در .env) فعال است —
@@ -43,6 +43,7 @@ app.include_router(follow_ups.router)
 app.include_router(notifications.router)
 app.include_router(filter_presets.router)
 app.include_router(chat.router)
+app.include_router(installers.router)
 # پوشه‌ای که نصب‌کننده‌های exe نسخه‌های جدید در آن قرار می‌گیرند (بخش ۸ روادمپ)
 app.mount("/static-installers", StaticFiles(directory="static_installers"), name="static-installers")
 
