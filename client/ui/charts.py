@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainter, QColor, QLinearGradient, QFont, QPainterPath
 from PySide6.QtWidgets import QWidget
-
+import settings_manager
 
 def _fa_num(n):
     return f"{int(n):,}" if n >= 1000 else str(int(n))
@@ -34,8 +34,9 @@ class BarChart(QWidget):
         n = len(self._values)
         gap = 10
         bw = max(8, (w - gap * (n + 1)) / n)
+        _f = max(1.0, settings_manager.get_font_size() / 13)
         font = QFont()
-        font.setPointSize(7)
+        font.setPixelSize(max(8, int(10 * _f)))
         p.setFont(font)
         for i, v in enumerate(self._values):
             x = w - gap - (i + 1) * bw - i * gap  # از راست (RTL)
@@ -73,10 +74,11 @@ class HBarChart(QWidget):
             return
         vmax = max(v for _, v in self._rows) or 1
         row_h = 26
-        font = QFont(); font.setPointSize(8)
+        _f = max(1.0, settings_manager.get_font_size() / 13)
+        font = QFont(); font.setPixelSize(max(9, int(11 * _f)))
         p.setFont(font)
         y = 4
-        label_w = 110
+        label_w = int(110 * max(1.0, settings_manager.get_font_size() / 13))
         for label, v in self._rows:
             bar_w = (self.width() - label_w - 70) * (v / vmax) if vmax else 0
             p.setPen(QColor(220, 226, 255))

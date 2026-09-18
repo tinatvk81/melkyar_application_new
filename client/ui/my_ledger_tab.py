@@ -58,10 +58,10 @@ class MyLedgerTab(QWidget):
         self.pays_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.pays_table.setSelectionBehavior(QAbstractItemView.SelectRows)
 
-        receipt_btn = QPushButton("مشاهده رسید")
-        receipt_btn.clicked.connect(self._view_receipt)
+        self.receipt_btn = QPushButton("مشاهده رسید")
+        self.receipt_btn.clicked.connect(self._view_receipt)
         pays_bar = QHBoxLayout()
-        pays_bar.addWidget(receipt_btn)
+        pays_bar.addWidget(self.receipt_btn)
         pays_bar.addStretch()
 
         lay = QVBoxLayout(self)
@@ -104,6 +104,7 @@ class MyLedgerTab(QWidget):
             self.deals_table.selectRow(0)
         else:
             self.pays_table.setRowCount(0)
+        self._fill_payments()
 
     def _current_deal(self):
         row = self.deals_table.currentRow()
@@ -122,6 +123,9 @@ class MyLedgerTab(QWidget):
             self.pays_table.setItem(r, 2, QTableWidgetItem(p.get("paid_date") or "—"))
             self.pays_table.setItem(r, 3, QTableWidgetItem(p.get("note") or ""))
             self.pays_table.setItem(r, 4, QTableWidgetItem("دارد" if p.get("has_receipt") else "—"))
+        self.receipt_btn.setEnabled(bool(pays))
+
+
 
     def _view_receipt(self):
         prow = self.pays_table.currentRow()
