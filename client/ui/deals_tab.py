@@ -301,8 +301,14 @@ class PaymentsDialog(QDialog):
 
     def _view_receipt(self):
         row = self.table.currentRow()
-        if row < 0 or not self._rows[row].get("has_receipt"):
-            QMessageBox.information(self, "توجه", "ابتدا پرداختی با رسید انتخاب کنید.")
+        if row < 0:
+            QMessageBox.information(self, "توجه", "ابتدا یک پرداخت را انتخاب کنید.")
+            return
+        if not self._rows[row].get("has_receipt"):
+            QMessageBox.information(
+                self, "توجه",
+                "برای این پرداخت هنوز رسیدی ثبت نشده است.\n"
+                "با دکمه‌ی «افزودن/تعویض رسید» می‌توانی عکس رسید را به همین پرداخت اضافه کنی.")
             return
         path = os.path.join(tempfile.gettempdir(), f"receipt_{self._rows[row]['id']}.jpg")
         try:
@@ -310,6 +316,7 @@ class PaymentsDialog(QDialog):
             os.startfile(path)
         except ApiError as e:
             handle_api_error(self, e, "خطا در دریافت رسید")
+
 
     def _attach_receipt(self):
         row = self.table.currentRow()
@@ -443,24 +450,9 @@ class DealsTab(QWidget):
         self.ind_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.ind_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.ind_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.ind_table.currentCellChanged.connect(self._fill_ind_payments)
         ind_lay.addWidget(self.ind_table)
 
-        b_row = QHBoxLayout()
-        b_row.addWidget(QLabel("پرداخت‌های معاملهٔ انتخاب‌شده:"))
-        receipt_btn = QPushButton("مشاهده رسید")
-        receipt_btn.clicked.connect(self._view_ind_receipt)
-        b_row.addWidget(receipt_btn)
-        b_row.addStretch()
-        ind_lay.addLayout(b_row)
-        self.ind_pay_table = QTableWidget()
-        self.ind_pay_table.setColumnCount(5)
-        self.ind_pay_table.setHorizontalHeaderLabels(["مبلغ", "نوع", "تاریخ", "توضیح", "رسید"])
-        self.ind_pay_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.ind_pay_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.ind_pay_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.ind_pay_table.setMaximumHeight(170)
-        ind_lay.addWidget(self.ind_pay_table)
+      
 
 
         tabs = QTabWidget()
@@ -543,7 +535,6 @@ class DealsTab(QWidget):
     def _load_individual(self):
         uid = self.individual_combo.currentData()
         self.ind_table.setRowCount(0)
-        self.ind_pay_table.setRowCount(0)
         self.individual_label.setText("")
         self._ind_ledger = None
         if uid is None:
@@ -570,37 +561,6 @@ class DealsTab(QWidget):
             f"معامله: {L['deals_count']} | قطعی: {L['finalized_count']} | کارکرد: {_money(L['earned'])} | "
             f"پرداخت‌شده: {_money(L['paid_total'])} | مانده: {_money(L['remaining'])} تومان")
 
-    def _fill_ind_payments(self, *_):
-        row = self.ind_table.currentRow()
-        pays = []
-        if self._ind_ledger and 0 <= row < len(self._ind_ledger.get("deals") or []):
-            pays = self._ind_ledger["deals"][row].get("payments") or []
-        KIND_FA = {"to_agent": "به مشاور →", "from_agent": "از مشاور ←"}
-        self.ind_pay_table.setRowCount(len(pays))
-        for r, p in enumerate(pays):
-            self.ind_pay_table.setItem(r, 0, QTableWidgetItem(_money(p["amount"])))
-            self.ind_pay_table.setItem(r, 1, QTableWidgetItem(KIND_FA.get(p.get("kind", "to_agent"), "—")))
-            self.ind_pay_table.setItem(r, 2, QTableWidgetItem(p.get("paid_date") or "—"))
-            self.ind_pay_table.setItem(r, 3, QTableWidgetItem(p.get("note") or ""))
-            self.ind_pay_table.setItem(r, 4, QTableWidgetItem("دارد" if p.get("has_receipt") else "—"))
-
-    def _view_ind_receipt(self):
-        prow = self.ind_pay_table.currentRow()
-        drow = self.ind_table.currentRow()
-        if drow < 0 or prow < 0 or not self._ind_ledger or drow >= len(self._ind_ledger.get("deals") or []):
-            QMessageBox.information(self, "توجه", "ابتدا معامله و پرداخت را انتخاب کنید.")
-            return
-        pays = self._ind_ledger["deals"][drow].get("payments") or []
-        if prow >= len(pays) or not pays[prow].get("has_receipt"):
-            QMessageBox.information(self, "توجه", "برای این پرداخت رسیدی ثبت نشده است.")
-            return
-        p = pays[prow]
-        path = os.path.join(tempfile.gettempdir(), f"receipt_{p['id']}.jpg")
-        try:
-            api_client.download_payment_receipt(p["id"], path)
-            os.startfile(path)
-        except ApiError as e:
-            handle_api_error(self, e, "خطا در دریافت رسید")
 
     def _ind_ledger_pdf(self):
         uid = self.individual_combo.currentData()

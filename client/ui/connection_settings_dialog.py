@@ -14,8 +14,8 @@ class ConnectionSettingsDialog(QDialog):
     نصب نسخه‌ی جدید نیست.
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
         self.setLayoutDirection(Qt.RightToLeft)
         self.setWindowTitle("تنظیمات اتصال به سرور")
         self.resize(420, 180)

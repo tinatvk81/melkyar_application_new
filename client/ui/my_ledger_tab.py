@@ -50,7 +50,7 @@ class MyLedgerTab(QWidget):
         self.deals_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.deals_table.currentCellChanged.connect(self._fill_payments)
 
-        lbl2 = QLabel("پرداخت‌های معاملهٔ انتخاب‌شده:")
+        lbl2 = QLabel("پرداخت‌های معاملهٔ انتخاب‌شده (اگر خالی است یعنی برای این معامله پرداختی ثبت نشده):")
         self.pays_table = QTableWidget()
         self.pays_table.setColumnCount(5)
         self.pays_table.setHorizontalHeaderLabels(["مبلغ", "نوع", "تاریخ", "توضیح", "رسید"])
@@ -99,7 +99,11 @@ class MyLedgerTab(QWidget):
             self.deals_table.setItem(r, 6, QTableWidgetItem(_money(d["remaining"])))
             self.deals_table.setItem(r, 7, QTableWidgetItem(STATUS_FA.get(d["status"], d["status"])))
             self.deals_table.setItem(r, 8, QTableWidgetItem(d.get("contract_date") or "—"))
-        self.pays_table.setRowCount(0)
+        # انتخاب خودکار اولین معامله → جدول پرداخت‌ها همان اول پر می‌شود (اگر پرداختی داشته باشد)
+        if deals:
+            self.deals_table.selectRow(0)
+        else:
+            self.pays_table.setRowCount(0)
 
     def _current_deal(self):
         row = self.deals_table.currentRow()
@@ -122,12 +126,18 @@ class MyLedgerTab(QWidget):
     def _view_receipt(self):
         prow = self.pays_table.currentRow()
         d = self._current_deal()
-        if prow < 0 or not d or prow >= len(d.get("payments") or []):
-            QMessageBox.information(self, "توجه", "ابتدا یک پرداخت را انتخاب کنید.")
+        if d is None or prow < 0 or prow >= len(d.get("payments") or []):
+            QMessageBox.information(
+                self, "توجه",
+                "اول در جدول بالا یک معامله را انتخاب کن، بعد در جدول پایین یکی از پرداخت‌هایش را.\n"
+                "اگر جدول پایین خالی است، یعنی برای این معامله هنوز پرداختی ثبت نشده است.")
             return
         p = d["payments"][prow]
         if not p.get("has_receipt"):
-            QMessageBox.information(self, "توجه", "برای این پرداخت رسیدی ثبت نشده است.")
+            QMessageBox.information(
+                self, "توجه",
+                "برای این پرداخت هنوز عکس رسیدی ثبت نشده است.\n"
+                "(رسید را مدیر هنگام ثبت پرداخت، یا بعداً از پنجره‌ی «پرداخت‌ها» اضافه می‌کند.)")
             return
         path = os.path.join(tempfile.gettempdir(), f"receipt_{p['id']}.jpg")
         try:

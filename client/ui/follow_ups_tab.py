@@ -78,7 +78,7 @@ class FollowUpDialog(QDialog):
         row = QHBoxLayout(); row.addStretch(); row.addWidget(save_btn); row.addWidget(cancel_btn)
 
         lay = QVBoxLayout(self); lay.addLayout(form); lay.addLayout(row)
-        
+
     def _save(self):
         title = self.title_input.text().strip()
         if not title:
@@ -310,7 +310,7 @@ class FollowUpsTab(QWidget):
         lay = QVBoxLayout(self)
         lay.addLayout(bar)
         lay.addWidget(self.table)
-        self.filter_combo.setCurrentIndex(1)
+        self.filter_combo.setCurrentIndex(self.filter_combo.findData("all"))
         self.load_items()
 
     def load_items(self):
