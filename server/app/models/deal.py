@@ -19,7 +19,10 @@ class Deal(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id"), nullable=False, index=True)
     agent_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-
+    # --- معاملهٔ مشارکتی: مشاور دوم + تقسیم درصد (مثلاً کل ۴۰٪ → ۲۵+۱۵) ---
+    agent2_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    commission_percent_agent2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    
     # NUMERIC بدون دقت = بدون سقف عملی (تا ۱۳۱٬۰۷۲ رقم) — برخلاف BigInteger که تا ۹.۲×۱۰¹۸
     deal_amount: Mapped[int] = mapped_column(Numeric, nullable=False)
     commission_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")

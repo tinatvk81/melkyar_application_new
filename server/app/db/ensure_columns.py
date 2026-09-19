@@ -12,6 +12,8 @@ REQUIRED_COLUMNS = [
     ("commission_payments", "kind", "VARCHAR(16) NOT NULL DEFAULT 'to_agent'"),
     ("properties", "urgent_until", "DATE"),
     ("properties", "location_url", "VARCHAR(500)"),
+    ("deals", "agent2_id", "INTEGER"),
+    ("deals", "commission_percent_agent2", "DOUBLE PRECISION"),
 ]
 
 MONEY_COLUMNS = [

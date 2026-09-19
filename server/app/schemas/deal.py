@@ -13,6 +13,8 @@ class DealCreate(BaseModel):
     commission_percent: Optional[float] = None   # اگر None باشد از درصد مشاور خوانده می‌شود
     contract_date: Optional[date] = None
     notes: Optional[str] = None
+    agent2_id: Optional[int] = None
+    commission_percent_agent2: Optional[float] = None
 
 
 class DealUpdate(BaseModel):
@@ -20,7 +22,8 @@ class DealUpdate(BaseModel):
     commission_percent: Optional[float] = None
     contract_date: Optional[date] = None
     notes: Optional[str] = None
-
+    agent2_id: Optional[int] = None
+    commission_percent_agent2: Optional[float] = None
 
 class PaymentRead(BaseModel):
     id: int

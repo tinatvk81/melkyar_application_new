@@ -14,4 +14,4 @@ exe نیست — کافی است settings.json یا همان پنجره‌ی ت�
 # SERVER_URL = "http://192.168.1.10:8000"
 SERVER_URL = "https://melkyarapp.ir"
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"

@@ -17,6 +17,8 @@ class Bubble(QFrame):
 
     def __init__(self, text, mine: bool, time_txt="", name=""):
         super().__init__()
+        palette = ["#f5a623", "#7dd3fc", "#86efac", "#c4b5fd", "#fca5a5", "#fdba74"]
+        color = palette[(len(name or "x")) % len(palette)] if name else "#7cc4ff"
         light = settings_manager.get_theme() == "light"
         if mine:
             bg = "#f5d67a" if light else "#8a6d1f"
@@ -37,7 +39,7 @@ class Bubble(QFrame):
         lay.setSpacing(3)
         if name:
             who = QLabel(name)
-            who.setStyleSheet(f"color: {name_c}; font-size: 9px; font-weight: bold;")
+            who.setStyleSheet(f"color: {color}; font-size: 9px; font-weight: bold;")
             lay.addWidget(who)
         body = QLabel(text)
         body.setWordWrap(True)
@@ -267,6 +269,7 @@ class ChatTab(QWidget):
         send_btn = QPushButton("ارسال")
         send_btn.setObjectName("primary")
         send_btn.clicked.connect(self._on_enter)
+        self.msg_input.textChanged.connect(self._on_typing_hint)
         input_row.addWidget(self.msg_input, 1)
         input_row.addWidget(send_btn)
         right.addLayout(input_row)
@@ -275,6 +278,15 @@ class ChatTab(QWidget):
         self.load_contacts()
         self._load_bot_greeting()
 
+
+    def _on_typing_hint(self):
+        # نمایش محلیِ "در حال تایپ" برای طرف مقابل هنوز سمت سرور پیاده نشده؛
+        # این فقط placeholder زنده است:
+        if self.msg_input.text():
+            self.peer_label.setText(self.peer_label.text().rstrip("…") + " …")
+        # برگشت متن اصلی در ارسال/رفرش انجام می‌شود
+
+        
     def _change_font(self, delta: int):
         app = QApplication.instance()
         cur = getattr(app, "chat_font_delta", 0)

@@ -83,10 +83,11 @@ class ApiClient:
         return resp.json()
         
     def notify_request_matches(self, property_id: int):
-        resp = requests.post(f"{self.server_url}/properties/notify-matches/{property_id}",
-                             headers=self._headers, timeout=15)
+        resp = _http.post(f"{self.server_url}/properties/notify-matches/{property_id}",
+                          headers=self._headers, timeout=15)
         self._raise_for_status(resp)
         return resp.json()
+
 
     def update_property(self, property_id: int, payload: dict):
         resp = _http.put(
@@ -343,8 +344,11 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
-    def add_deal_payment(self, deal_id: int, amount: int, paid_date=None, note=None, receipt_path=None, kind="to_agent"):
+    def add_deal_payment(self, deal_id: int, amount: int, paid_date=None, note=None,
+                         receipt_path=None, kind="to_agent", to_user=None):
         data = {"amount": str(amount), "kind": kind}
+        if to_user:
+            data["to_user"] = str(to_user)
         if paid_date: data["paid_date"] = paid_date
         if note: data["note"] = note
         files = {}
@@ -661,7 +665,7 @@ class ApiClient:
         return resp.json()
 
     def run_backup(self):
-        resp = requests.post(f"{self.server_url}/backups/run", headers=self._headers, timeout=120)
+        resp = _http.post(f"{self.server_url}/backups/run", headers=self._headers, timeout=120)
         self._raise_for_status(resp)
         return resp.json()
 

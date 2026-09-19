@@ -29,8 +29,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       SECRET_KEY: ${SECRET_KEY}
       DEBUG: "false"
-      APP_VERSION: "1.3.0"
-      INSTALLER_FILENAME: "RealEstateApp-Setup-1.3.0.exe"
+      APP_VERSION: "1.4.0"
+      INSTALLER_FILENAME: "RealEstateApp-Setup-1.4.0.exe"
     ports:
       - "8000:8000"
     volumes:

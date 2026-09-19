@@ -93,6 +93,15 @@ class DealFormDialog(QDialog):
             t = DEAL_TYPE_LABELS.get(p.get("deal_type"), "")
             self.prop_combo.addItem(f"#{p['id']} — {t} — {p.get('city','')} — {p.get('address') or ''}", p["id"])
         self.agent_combo = QComboBox()
+        self.agent2_combo = QComboBox()
+        self.agent2_combo.addItem("— بدون مشارکت —", None)
+        for a in self._agents:
+            label = a["full_name"] + (" (مدیر)" if a.get("role") == "admin" else "")
+            self.agent2_combo.addItem(label, a["id"])
+        self.share2_input = QLineEdit()
+        self.share2_input.setPlaceholderText("درصد سهم مشاور دوم (مثلاً 15)")
+        form.addRow("مشاور دوم (اختیاری):", self.agent2_combo)
+        form.addRow("سهم مشاور دوم (%):", self.share2_input)
         for a in self._agents:
             label = a["full_name"] + (" (مدیر)" if a.get("role") == "admin" else "")
             self.agent_combo.addItem(label, a["id"])
@@ -148,6 +157,19 @@ class DealFormDialog(QDialog):
         except ValueError:
             QMessageBox.warning(self, "خطا", "درصد پورسانت باید عدد باشد.")
             return
+        if self.agent2_combo.currentData():
+            payload["agent2_id"] = self.agent2_combo.currentData()
+            try:
+                s2 = float(self.share2_input.text().replace("٪", "").strip())
+            except ValueError:
+                QMessageBox.warning(self, "خطا", "سهم مشاور دوم باید عدد باشد.")
+                return
+            if not (0 < s2 < (payload.get("commission_percent") or 100)):
+                QMessageBox.warning(self, "خطا", "سهم دوم باید بین صفر و درصد کل باشد.")
+                return
+            payload["commission_percent_agent2"] = s2
+
+
         iso = self.date_input.get_iso_string()
         if iso:
             payload["contract_date"] = iso
@@ -163,14 +185,14 @@ class DealFormDialog(QDialog):
         self.on_saved()
         self.accept()
 
-
 class PaymentDialog(QDialog):
-    def __init__(self, deal_id, on_saved):
+    def __init__(self, deal_id, on_saved, to_user=None):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
-        self.setWindowTitle("ثبت پرداخت پورسانت")
         self.deal_id = deal_id
         self.on_saved = on_saved
+        self._to_user = to_user
+        self.setWindowTitle("ثبت پرداخت پورسانت")
         self.resize(430, 330)
 
         form = QFormLayout()
@@ -221,6 +243,7 @@ class PaymentDialog(QDialog):
                 note=self.note_input.text().strip() or None,
                 receipt_path=self.receipt_input.text().strip() or None,
                 kind=self.kind_combo.currentData(),
+                to_user=self._to_user,
             )
         except ApiError as e:
             handle_api_error(self, e, "خطا در ثبت پرداخت")
@@ -228,9 +251,8 @@ class PaymentDialog(QDialog):
         self.on_saved()
         self.accept()
 
-
 class PaymentsDialog(QDialog):
-    def __init__(self, deal, on_changed, agent_name=None):
+    def __init__(self, deal, on_changed, agent_name=None, agent2_name=None):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
         self.deal = deal
@@ -260,6 +282,8 @@ class PaymentsDialog(QDialog):
         close_btn = QPushButton("بستن")
         close_btn.clicked.connect(self.accept)
 
+
+            
         btns = QHBoxLayout()
         btns.addWidget(add_btn)
         btns.addWidget(view_btn)
@@ -270,6 +294,14 @@ class PaymentsDialog(QDialog):
 
         lay = QVBoxLayout(self)
         lay.addWidget(head)
+        self.to_user_combo = None
+        if deal.get("agent2_id"):
+            self.to_user_combo = QComboBox()
+            self.to_user_combo.addItem(f"سهم مشاور: {agent_name or '—'}", deal["agent_id"])
+            a2 = agent2_name or f"#{deal['agent2_id']}"
+            self.to_user_combo.addItem(f"سهم مشاور: {a2}", deal["agent2_id"])
+            lay.addWidget(QLabel("پرداخت جدید به سهمِ:"))
+            lay.addWidget(self.to_user_combo)
         lay.addWidget(self.total_label)
         lay.addWidget(self.table)
         lay.addLayout(btns)
@@ -297,7 +329,8 @@ class PaymentsDialog(QDialog):
             f"از مشاور: {_money(from_total)} — مانده: {_money(self.deal['commission_amount'] - to_total + from_total)} تومان")
 
     def _add_payment(self):
-        dlg = PaymentDialog(self.deal["id"], on_saved=self._reload)
+        to_user = self.to_user_combo.currentData() if self.to_user_combo else None
+        dlg = PaymentDialog(self.deal["id"], on_saved=self._reload, to_user=to_user)
         dlg.exec()
         self.on_changed()
 
@@ -687,7 +720,11 @@ class DealsTab(QWidget):
         for r, d in enumerate(deals):
             agent = self._agent_map.get(d["agent_id"], {})
             self.table.setItem(r, 0, QTableWidgetItem(str(d["id"])))
-            self.table.setItem(r, 1, QTableWidgetItem(agent.get("full_name") or ""))
+            name = agent.get("full_name") or ""
+            if d.get("agent2_id"):
+                a2 = self._agent_map.get(d["agent2_id"], {})
+                name += f" 🤝 {a2.get('full_name') or '#'+str(d['agent2_id'])}"
+            self.table.setItem(r, 1, QTableWidgetItem(name))
             self.table.setItem(r, 2, QTableWidgetItem(f"#{d['property_id']}"))
             self.table.setItem(r, 3, QTableWidgetItem(_money(d["deal_amount"])))
             self.table.setItem(r, 4, QTableWidgetItem(f"{d['commission_percent']:g}٪"))
@@ -799,7 +836,11 @@ class DealsTab(QWidget):
             QMessageBox.information(self, "توجه", "برای معامله‌ی لغوشده پرداخت ثبت نمی‌شود.")
             return
         agent = self._agent_map.get(d["agent_id"], {})
-        PaymentsDialog(d, agent_name=agent.get("full_name") or "", on_changed=self.load_all).exec()
+        d2 = self._agent_map.get(d.get("agent2_id"), {})
+        PaymentsDialog(d, agent_name=agent.get("full_name") or "",
+                       agent2_name=(d2.get("full_name") or f"#{d.get('agent2_id')}") if d.get("agent2_id") else None,
+                       on_changed=self.load_all).exec()
+
 
     def _settlement_pdf(self):
         d = self._selected_deal()

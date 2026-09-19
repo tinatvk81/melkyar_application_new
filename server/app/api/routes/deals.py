@@ -28,6 +28,19 @@ def _commission_of(amount: int, percent: float) -> int:
     """محاسبه‌ی دقیق پورسانت با Decimal — مبالغ خیلی بزرگ نباید از float رد شوند."""
     return int(round(Decimal(amount) * Decimal(str(percent)) / Decimal(100)))
 
+def _deal_out_with_share(db: Session, d: Deal) -> dict:
+    """خروجی معامله + اطلاعات سهم مشاور دوم (اگر مشارکتی باشد)."""
+    out = _deal_out(db, d)
+    if d.agent2_id:
+        p2 = float(d.commission_percent_agent2 or 0)
+        p1 = float(d.commission_percent) - p2
+        out["agent2_id"] = d.agent2_id
+        out["commission_percent_agent2"] = p2
+        out["commission_percent_agent1"] = round(p1, 2)
+        out["commission_amount_agent1"] = _commission_of(out["deal_amount"], p1)
+        out["commission_amount_agent2"] = _commission_of(out["deal_amount"], p2)
+    return out
+
 
 def _deal_out(db: Session, d: Deal) -> dict:
     to_agent = db.query(func.coalesce(func.sum(CommissionPayment.amount), 0)).filter(
@@ -67,6 +80,12 @@ def create_deal(data: DealCreate, db: Session = Depends(get_db), admin: User = D
     agent = db.get(User, data.agent_id)
     if not agent:
         raise HTTPException(404, "مشاور پیدا نشد")
+    if data.agent2_id:
+        if data.agent2_id == data.agent_id:
+            raise HTTPException(400, "مشاور دوم نمی‌تواند همان مشاور اول باشد")
+        agent2 = db.get(User, data.agent2_id)
+        if not agent2:
+            raise HTTPException(404, "مشاور دوم پیدا نشد")
 
     pct = data.commission_percent
     if pct is None:
@@ -76,8 +95,15 @@ def create_deal(data: DealCreate, db: Session = Depends(get_db), admin: User = D
             raise HTTPException(400, f"درصد پورسانت این مشاور برای نوع «{key}» تنظیم نشده است. ابتدا در مدیریت کاربران درصد را وارد کنید.")
         pct = float(rates[key])
 
+    # اعتبارسنجی سهم مشاور دوم — بعد از تعیین pct (ترتیب درست)
+    if data.commission_percent_agent2 is not None:
+        if data.commission_percent_agent2 <= 0 or data.commission_percent_agent2 >= float(pct):
+            raise HTTPException(400, "درصد مشاور دوم باید بین صفر و درصد کل معامله باشد")
+
     deal = Deal(
         property_id=data.property_id, agent_id=data.agent_id,
+        agent2_id=data.agent2_id,
+        commission_percent_agent2=data.commission_percent_agent2,
         deal_amount=data.deal_amount, commission_percent=pct,
         commission_amount=_commission_of(data.deal_amount, pct),
         contract_date=data.contract_date, notes=data.notes,
@@ -86,7 +112,8 @@ def create_deal(data: DealCreate, db: Session = Depends(get_db), admin: User = D
     db.commit()
     db.refresh(deal)
     log_activity(db, admin.id, "create", "deal", deal.id, detail=f"معامله {data.deal_amount:,} تومان")
-    return _deal_out(db, deal)
+    return _deal_out_with_share(db, deal)
+
 
 @router.get("/export/excel")
 def export_deals_excel(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
@@ -161,6 +188,8 @@ def finalize_deal(deal_id: int, db: Session = Depends(get_db), admin: User = Dep
         raise HTTPException(400, "این معامله قبلاً قطعی شده است — نیازی به قطعی دوباره نیست")
     if d.status == DealStatus.canceled:
         raise HTTPException(400, "این معامله لغو شده و قابل قطعی‌کردن نیست")
+    if d.agent2_id and not d.commission_percent_agent2:
+        raise HTTPException(400, "درصد مشاور دوم تعیین نشده — ابتدا تقسیم را ثبت کنید")
 
     d.status = DealStatus.finalized
     d.finalized_at = datetime.now(timezone.utc)
@@ -168,6 +197,24 @@ def finalize_deal(deal_id: int, db: Session = Depends(get_db), admin: User = Dep
     if prop:
         _dt = prop.deal_type.value if hasattr(prop.deal_type, "value") else str(prop.deal_type)
         prop.status = PropertyStatus.rented if _dt in ("rent", "mortgage") else PropertyStatus.sold
+
+    if d.agent2_id:
+        p2 = float(d.commission_percent_agent2)
+        p1 = float(d.commission_percent) - p2
+        amount = int(d.deal_amount)
+        s1 = Deal(property_id=d.property_id, agent_id=d.agent_id,
+                  deal_amount=amount, commission_percent=round(p1, 2),
+                  commission_amount=_commission_of(amount, p1),
+                  contract_date=d.contract_date, notes=f"سهم مشاور اول از معاملهٔ مشارکتی #{d.id}")
+        s2 = Deal(property_id=d.property_id, agent_id=d.agent2_id,
+                  deal_amount=amount, commission_percent=round(p2, 2),
+                  commission_amount=_commission_of(amount, p2),
+                  contract_date=d.contract_date, notes=f"سهم مشاور دوم از معاملهٔ مشارکتی #{d.id}")
+        db.add(s1)
+        db.add(s2)
+        log_activity(db, admin.id, "create", "deal", d.id,
+                     detail=f"تقسیم مشارکتی {p1:g}/{p2:g} بین دو مشاور")
+
     db.commit()
     db.refresh(d)
     log_activity(db, admin.id, "finalize", "deal", d.id, detail=f"قطعی — پورسانت {int(d.commission_amount):,}")
@@ -175,7 +222,12 @@ def finalize_deal(deal_id: int, db: Session = Depends(get_db), admin: User = Dep
                         body=f"معامله #{d.id} قطعی شد — پورسانت {int(d.commission_amount):,} تومان.",
                         entity_type="deal", entity_id=d.id))
     db.commit()
-    return _deal_out(db, d)
+    if d.agent2_id:
+        db.add(Notification(user_id=d.agent2_id, title="پورسانت مشارکتی شما قطعی شد",
+                            body=f"سهم شما از معامله #{d.id} قطعی شد.",
+                            entity_type="deal", entity_id=d.id))
+        db.commit()
+    return _deal_out_with_share(db, d)
 
 
 @router.post("/{deal_id}/unfinalize")
@@ -190,6 +242,14 @@ def unfinalize_deal(deal_id: int, db: Session = Depends(get_db), admin: User = D
     prop = db.get(Property, d.property_id)
     if prop and prop.status in (PropertyStatus.sold, PropertyStatus.rented):
         prop.status = PropertyStatus.active
+    if d.agent2_id:
+        for sd in db.query(Deal).filter(
+                Deal.property_id == d.property_id,
+                Deal.deal_amount == d.deal_amount,
+                Deal.id != d.id).all():
+            if sd.notes and f"معاملهٔ مشارکتی #{d.id}" in (sd.notes or ""):
+                db.delete(sd)
+
     db.commit()
     db.refresh(d)
     log_activity(db, admin.id, "update", "deal", d.id, detail="بازگشت از قطعی به در جریان")
@@ -243,10 +303,15 @@ def attach_receipt(payment_id: int, receipt: UploadFile = File(...),
 @router.post("/{deal_id}/payments")
 def add_payment(deal_id: int, amount: int = Form(...), paid_date: str | None = Form(None),
                 note: str | None = Form(None), kind: str = Form("to_agent"),
+                to_user: int | None = Form(None),
                 receipt: UploadFile | None = File(None), db=Depends(get_db), admin: User = Depends(require_admin)):
     d = db.get(Deal, deal_id)
     if not d:
         raise HTTPException(404, "معامله پیدا نشد")
+    to_user = to_user or d.agent_id  # پیش‌فرض: مشاور اصلی
+    if d.agent2_id and to_user not in (d.agent_id, d.agent2_id):
+        raise HTTPException(400, "to_user باید یکی از دو مشاور این معامله باشد")
+
     pdate = date.fromisoformat(paid_date) if paid_date else None
     receipt_path = None
     if receipt and receipt.filename:
@@ -265,7 +330,7 @@ def add_payment(deal_id: int, amount: int = Form(...), paid_date: str | None = F
     db.commit()
     db.refresh(p)
     log_activity(db, admin.id, "create", "deal_payment", deal_id, detail=f"پرداخت {int(amount):,} تومان")
-    db.add(Notification(user_id=d.agent_id, title="پرداخت پورسانت ثبت شد",
+    db.add(Notification(user_id=to_user, title="پرداخت پورسانت ثبت شد",
                         body=f"برای معامله #{deal_id} پرداخت {int(amount):,} تومانی ثبت شد.",
                         entity_type="deal", entity_id=deal_id))
     db.commit()
