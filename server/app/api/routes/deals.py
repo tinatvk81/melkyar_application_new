@@ -166,7 +166,8 @@ def finalize_deal(deal_id: int, db: Session = Depends(get_db), admin: User = Dep
     d.finalized_at = datetime.now(timezone.utc)
     prop = db.get(Property, d.property_id)
     if prop:
-        prop.status = PropertyStatus.sold
+        _dt = prop.deal_type.value if hasattr(prop.deal_type, "value") else str(prop.deal_type)
+        prop.status = PropertyStatus.rented if _dt in ("rent", "mortgage") else PropertyStatus.sold
     db.commit()
     db.refresh(d)
     log_activity(db, admin.id, "finalize", "deal", d.id, detail=f"قطعی — پورسانت {int(d.commission_amount):,}")
@@ -187,7 +188,7 @@ def unfinalize_deal(deal_id: int, db: Session = Depends(get_db), admin: User = D
     d.status = DealStatus.pending
     d.finalized_at = None
     prop = db.get(Property, d.property_id)
-    if prop and prop.status == PropertyStatus.sold:
+    if prop and prop.status in (PropertyStatus.sold, PropertyStatus.rented):
         prop.status = PropertyStatus.active
     db.commit()
     db.refresh(d)

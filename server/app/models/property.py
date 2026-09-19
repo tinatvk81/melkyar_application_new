@@ -23,8 +23,8 @@ class DealType(str, enum.Enum):
 class PropertyStatus(str, enum.Enum):
     active = "active"
     inactive = "inactive"
-    sold = "sold"   # معامله قطعی شده — در تب بایگانی نمایش داده می‌شود
-
+    sold = "sold"     # معاملهٔ فروش قطعی شده
+    rented = "rented"  # اجاره/رهن قطعی شده — فایل بایگانی ولی قابل ردیابی مالک
 
 class Property(Base):
     __tablename__ = "properties"
@@ -64,17 +64,14 @@ class Property(Base):
 
     # فقط برای اجاره/رهن: تاریخ پایان قرارداد (برای ماژول یادآوری)
     contract_end_date: Mapped[date] = mapped_column(Date, nullable=True, index=True)
-
+    urgent_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    location_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # فیلدهای اختصاصی هر نوع معامله، مثلا:
     # sale: {"price": 5200000000}
     # presale: {"total_price": ..., "delivery_date": "1404-06-01", "installments": [...]}
     # rent: {"monthly_rent": ..., "deposit": ...}
     # mortgage: {"deposit_full": ...}
 
-        # فایل فوری: مالک می‌خواهد تا تاریخ مشخص بفروشد — بج 🔥 تا این تاریخ نمایش داده می‌شود
-    urgent_until: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # لینک مکان روی نقشه (Share از گوگل‌مپس) — اختیاری
-    location_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     notes: Mapped[str] = mapped_column(String(2000), nullable=True)

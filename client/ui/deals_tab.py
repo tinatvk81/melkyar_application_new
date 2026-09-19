@@ -349,6 +349,66 @@ class PaymentsDialog(QDialog):
         self._reload()
         self.on_changed()
 
+class BackupDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setLayoutDirection(Qt.RightToLeft)
+        self.setWindowTitle("بکاپ دیتابیس")
+        self.resize(560, 400)
+        self._rows = []
+
+        run_btn = QPushButton("💾 ساخت بکاپ الان")
+        run_btn.setObjectName("primary")
+        run_btn.clicked.connect(self._run)
+        dl_btn = QPushButton("دانلود انتخاب‌شده")
+        dl_btn.clicked.connect(self._download)
+        refresh_btn = QPushButton("به‌روزرسانی")
+        refresh_btn.clicked.connect(self._reload)
+        close_btn = QPushButton("بستن"); close_btn.clicked.connect(self.accept)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["فایل بکاپ", "حجم (بایت)"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+
+        bar = QHBoxLayout(); bar.addWidget(run_btn); bar.addWidget(dl_btn)
+        bar.addWidget(refresh_btn); bar.addStretch(); bar.addWidget(close_btn)
+        hint = QLabel("هر شب ۰۲:۳۰ خودکار ساخته می‌شود — ۱۴ نسخهٔ آخر نگه‌داری می‌شود.")
+        lay = QVBoxLayout(self); lay.addWidget(hint); lay.addWidget(self.table); lay.addLayout(bar)
+        self._reload()
+
+    def _reload(self):
+        try:
+            self._rows = api_client.list_backups()
+        except ApiError as e:
+            handle_api_error(self, e, "خطا"); self._rows = []
+        self.table.setRowCount(len(self._rows))
+        for r, b in enumerate(self._rows):
+            self.table.setItem(r, 0, QTableWidgetItem(b["filename"]))
+            self.table.setItem(r, 1, QTableWidgetItem(f"{b['size']:,}"))
+
+    def _run(self):
+        try:
+            res = api_client.run_backup()
+        except ApiError as e:
+            handle_api_error(self, e, "خطا در بکاپ"); return
+        Toast.show(f"✅ بکاپ ساخته شد: {res['filename']}")
+        self._reload()
+
+    def _download(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "توجه", "ابتدا یک بکاپ انتخاب کنید."); return
+        path, _ = QFileDialog.getSaveFileName(self, "ذخیره بکاپ", self._rows[row]["filename"], "Backup (*.json.gz)")
+        if not path: return
+        try:
+            api_client.download_backup(self._rows[row]["filename"], path)
+        except ApiError as e:
+            handle_api_error(self, e, "خطا"); return
+        QMessageBox.information(self, "موفق", f"ذخیره شد:\n{path}")
+
 
 class DealsTab(QWidget):
     """حسابداری پورسانت — فقط مدیر. سه تب: معامله‌ها / مانده‌ها / دفتر فردی."""
@@ -430,7 +490,8 @@ class DealsTab(QWidget):
         bal_pdf_btn.clicked.connect(self._balances_pdf)
         bal_w = QWidget(); bal_lay = QVBoxLayout(bal_w)
         bal_lay.addWidget(self.bal_table); bal_lay.addWidget(bal_pdf_btn)
-
+        backup_btn = QPushButton("💾 بکاپ"); backup_btn.clicked.connect(lambda: BackupDialog().exec())
+        actions.addWidget(backup_btn)
         ind_w = QWidget(); ind_lay = QVBoxLayout(ind_w)
         a_row = QHBoxLayout()
         a_row.addWidget(QLabel("مشاور:"))

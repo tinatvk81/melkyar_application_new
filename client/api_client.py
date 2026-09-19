@@ -654,4 +654,23 @@ class ApiClient:
         return resp.json()
 
 
+    def list_stale_properties(self, days: int = 30):
+        resp = requests.get(f"{self.server_url}/properties/stale", params={"days": days},
+                            headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def run_backup(self):
+        resp = requests.post(f"{self.server_url}/backups/run", headers=self._headers, timeout=120)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def list_backups(self):
+        resp = requests.get(f"{self.server_url}/backups/list", headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def download_backup(self, filename: str, save_path: str):
+        self._download_to_file(f"{self.server_url}/backups/download/{filename}", save_path)
+
 api_client = ApiClient()  # نمونه‌ی مشترک در کل برنامه‌ی کلاینت

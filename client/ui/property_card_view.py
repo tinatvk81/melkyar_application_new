@@ -10,7 +10,8 @@ from api_client import api_client, ApiError
 from session import handle_api_error
 from ui.property_form import DEAL_TYPE_LABELS, PropertyFormDialog
 
-STATUS_BADGE = {"active": ("فعال", "#86efac"), "sold": ("فروخته‌شده", "#f5a623"), "inactive": ("غیرفعال", "#fca5a5")}
+STATUS_BADGE = {"active": ("فعال", "#86efac"), "sold": ("فروخته‌شده", "#f5a623"), "inactive": ("غیرفعال", "#fca5a5"),
+"rented": ("اجاره‌داده‌شده", "#7dd3fc"),}
 URGENT_FA = "🔥 فوری"
 
 

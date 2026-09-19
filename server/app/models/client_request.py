@@ -8,9 +8,13 @@ from app.db.base import Base
 
 
 class RequestStatus(str, enum.Enum):
-    open = "open"      # در جست‌وجوی فایل
-    closed = "closed"  # بسته شده (معامله شد یا منصرف شد)
-
+    open = "open"              # 🆕 جدید — در جست‌وجوی فایل
+    contacted = "contacted"    # 📞 تماس شد
+    visited = "visited"        # 🏠 بازدید رفت
+    negotiation = "negotiation"  # 🤝 مذاکره
+    won = "won"                # ✅ معامله شد
+    lost = "lost"              # ❌ منصرف
+    closed = "closed"          # legacy — نسخه‌های قبلی
 
 class ClientRequest(Base):
     __tablename__ = "client_requests"

@@ -263,6 +263,61 @@ class NotificationsDialog(QDialog):
         if self.on_changed:
             self.on_changed()
 
+class StaleFilesDialog(QDialog):
+    def __init__(self, on_open_property):
+        super().__init__()
+        self.setLayoutDirection(Qt.RightToLeft)
+        self.setWindowTitle("فایل‌های کهنه — بدون پیگیری")
+        self.resize(700, 460)
+        self._rows = []
+        self._on_open = on_open_property
+
+        self.days_combo = QComboBox()
+        for v, l in [(30, "۳۰ روز"), (60, "۶۰ روز"), (90, "۹۰ روز")]:
+            self.days_combo.addItem(l, v)
+        self.days_combo.currentIndexChanged.connect(self._load)
+        reload_btn = QPushButton("به‌روزرسانی")
+        reload_btn.clicked.connect(self._load)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["#", "شهر", "منطقه", "آدرس", "مالک", "تلفن"])
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.doubleClicked.connect(self._open)
+
+        bar = QHBoxLayout()
+        bar.addWidget(QLabel("قدیمی‌تر از:")); bar.addWidget(self.days_combo)
+        bar.addWidget(reload_btn); bar.addStretch()
+        hint = QLabel("فایل فعالِ بدون هیچ پیگیریِ وصل‌شده — دابل‌کلیک = باز کردن فایل")
+        close_btn = QPushButton("بستن"); close_btn.clicked.connect(self.accept)
+        bbar = QHBoxLayout(); bbar.addWidget(hint); bbar.addStretch(); bbar.addWidget(close_btn)
+
+        lay = QVBoxLayout(self); lay.addLayout(bar); lay.addWidget(self.table); lay.addLayout(bbar)
+        self._load()
+
+    def _load(self):
+        try:
+            self._rows = api_client.list_stale_properties(days=self.days_combo.currentData())
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            self._rows = []
+        self.table.setRowCount(len(self._rows))
+        for r, p in enumerate(self._rows):
+            self.table.setItem(r, 0, QTableWidgetItem(f"#{p['id']}"))
+            self.table.setItem(r, 1, QTableWidgetItem(p.get("city") or ""))
+            self.table.setItem(r, 2, QTableWidgetItem(p.get("district") or ""))
+            self.table.setItem(r, 3, QTableWidgetItem(p.get("address") or ""))
+            self.table.setItem(r, 4, QTableWidgetItem(p.get("owner_name") or ""))
+            self.table.setItem(r, 5, QTableWidgetItem(p.get("owner_phone") or ""))
+
+    def _open(self):
+        row = self.table.currentRow()
+        if 0 <= row < len(self._rows):
+            self.close()
+            self._on_open(self._rows[row])
+
 
 class FollowUpsTab(QWidget):
     """پیگیری روزمره — مشاور فقط کارهای خودش؛ مدیر همه را می‌بیند."""
@@ -294,6 +349,9 @@ class FollowUpsTab(QWidget):
         refresh_btn = QPushButton("به‌روزرسانی")
         refresh_btn.clicked.connect(self.load_items)
 
+        stale_btn = QPushButton("📋 فایل‌های کهنه")
+        stale_btn.clicked.connect(self._open_stale)
+
         bar = QHBoxLayout()
         bar.addWidget(QLabel("نمایش:"))
         bar.addWidget(self.filter_combo)
@@ -301,6 +359,7 @@ class FollowUpsTab(QWidget):
         bar.addWidget(edit_btn)
         bar.addWidget(done_btn)
         bar.addWidget(open_prop_btn)
+        bar.addWidget(stale_btn)
         bar.addWidget(del_btn)
         bar.addStretch()
         bar.addWidget(refresh_btn)
@@ -320,6 +379,12 @@ class FollowUpsTab(QWidget):
         self.filter_combo.setCurrentIndex(self.filter_combo.findData("all"))
         self.load_items()
 
+
+    def _open_stale(self):
+        StaleFilesDialog(
+            on_open_property=lambda p: PropertyFormDialog(property_data=p, on_saved=self.load_items).exec()
+        ).exec()
+        
     def load_items(self):
         try:
             self._rows = api_client.list_follow_ups(when=self.filter_combo.currentData())

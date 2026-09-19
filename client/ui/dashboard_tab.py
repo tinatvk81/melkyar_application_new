@@ -113,6 +113,9 @@ class DashboardTab(QWidget):
         layout.addWidget(welcome)
         layout.addLayout(top_bar)
         layout.addLayout(grid)
+        self.pipeline_label = QLabel("")
+        self.pipeline_label.setStyleSheet("color: #7dd3fc; background: transparent; font-size: 12px;")
+        layout.addWidget(self.pipeline_label)
         if self.charts_frame:
             layout.addLayout(self.charts_frame)
         layout.addStretch()
@@ -162,6 +165,16 @@ class DashboardTab(QWidget):
             self.images_card.set_value(sum(1 for p in resp["items"] if p.get("has_images")))
         except ApiError:
             self.images_card.set_value("—")
+
+        try:
+            reqs = api_client.list_client_requests()
+            FA = {"open": "🆕", "contacted": "📞", "visited": "🏠", "negotiation": "🤝"}
+            counts = {k: sum(1 for r in reqs if r.get("status") == k) for k in FA}
+            txt = " | ".join(f"{FA[k]} {counts[k]}" for k in FA if counts[k])
+            self.pipeline_label.setText("مشتری‌ها: " + txt if txt else "")
+        except ApiError:
+            self.pipeline_label.setText("")
+            
 
     def _go(self, target, deal_type=None):
         if self._on_navigate:

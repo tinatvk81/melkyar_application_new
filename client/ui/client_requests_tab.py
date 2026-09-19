@@ -4,12 +4,20 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QMessageBox, QDialog, QFormLayout, QLineEdit, QTextEdit,
     QHeaderView, QDoubleSpinBox, QAbstractItemView,
 )
-
+from PySide6.QtGui import QColor
 from api_client import api_client, ApiError
 from session import handle_api_error
 from ui.property_form import DEAL_TYPE_LABELS, MoneyLineEdit, PersianSpinBox, PersianDoubleSpinBox, PropertyFormDialog
 
 from ui.widgets import PhoneLineEdit 
+
+REQUEST_STATUS_FA = {
+    "open": "🆕 جدید", "contacted": "📞 تماس شد", "visited": "🏠 بازدید رفت",
+    "negotiation": "🤝 مذاکره", "won": "✅ معامله شد", "lost": "❌ منصرف", "closed": "بسته",
+}
+REQUEST_STATUS_COLORS = {"open": "#e5e7eb", "contacted": "#7dd3fc", "visited": "#86efac",
+                         "negotiation": "#fcd34d", "won": "#22c55e", "lost": "#ef4444", "closed": "#9ca3af"}
+
 class ClientRequestDialog(QDialog):
     def __init__(self, data=None, on_saved=None):
         super().__init__()
@@ -83,7 +91,6 @@ class ClientRequestDialog(QDialog):
             "min_rooms": self.min_rooms.value() or None,
             "max_price": self.max_price.value(),
             "notes": self.notes_input.toPlainText().strip() or None,
-            "customer_phone": self.phone_input.normalized_text() or None,
         }
         try:
             if self.data:
@@ -169,16 +176,24 @@ class ClientRequestsTab(QWidget):
         edit_btn.clicked.connect(self._edit)
         matches_btn = QPushButton("فایل‌های منطبق")
         matches_btn.clicked.connect(self._matches)
-        self.toggle_status_btn = QPushButton("بستن درخواست")
-        self.toggle_status_btn.clicked.connect(self._toggle_status)
+
+        self.stage_combo = QComboBox()
+        for v, l in REQUEST_STATUS_FA.items():
+            self.stage_combo.addItem(l, v)
+        stage_btn = QPushButton("ثبت مرحله")
+        stage_btn.clicked.connect(self._set_stage)
+
         del_btn = QPushButton("حذف")
         del_btn.clicked.connect(self._delete)
         refresh_btn = QPushButton("به‌روزرسانی")
         refresh_btn.clicked.connect(self.load_requests)
 
         bar = QHBoxLayout()
-        for b in (add_btn, edit_btn, matches_btn, self.toggle_status_btn, del_btn):
+        for b in (add_btn, edit_btn, matches_btn, del_btn):
             bar.addWidget(b)
+        bar.addWidget(QLabel("مرحله:"))
+        bar.addWidget(self.stage_combo)
+        bar.addWidget(stage_btn)
         bar.addStretch()
         bar.addWidget(refresh_btn)
 
@@ -204,7 +219,10 @@ class ClientRequestsTab(QWidget):
             self.table.setItem(r, 4, QTableWidgetItem(city))
             self.table.setItem(r, 5, QTableWidgetItem(area))
             self.table.setItem(r, 6, QTableWidgetItem(f"{q['max_price']:,}" if q.get("max_price") else "—"))
-            self.table.setItem(r, 7, QTableWidgetItem("باز" if q.get("status") == "open" else "بسته"))
+            st = q.get("status", "open")
+            st_item = QTableWidgetItem(REQUEST_STATUS_FA.get(st, st))
+            st_item.setForeground(QColor(REQUEST_STATUS_COLORS.get(st, "#eceaf4")))
+            self.table.setItem(r, 7, st_item)
 
     def _selected(self):
         row = self.table.currentRow()
@@ -223,13 +241,12 @@ class ClientRequestsTab(QWidget):
         if q:
             MatchesDialog(q).exec()
 
-    def _toggle_status(self):
+    def _set_stage(self):
         q = self._selected()
         if not q:
             return
-        new_status = "closed" if q["status"] == "open" else "open"
         try:
-            api_client.update_client_request(q["id"], {"status": new_status})
+            api_client.update_client_request(q["id"], {"status": self.stage_combo.currentData()})
         except ApiError as e:
             handle_api_error(self, e, "خطا")
             return

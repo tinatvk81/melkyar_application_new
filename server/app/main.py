@@ -3,7 +3,7 @@ import logging
 from app.core.logging_config import setup_logging
 log_file_path = setup_logging()
 logger = logging.getLogger(__name__)
-
+from datetime import datetime
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.api.routes import (
     auth, properties, users, version, import_excel, property_images,
     reports, activity_logs, deals, client_requests, follow_ups,
-    notifications, filter_presets,chat,bot, installers,
+    notifications, filter_presets, chat, bot, installers, backups,
 )
 app = FastAPI(
     title="سامانه‌ی مدیریت فایل‌های ملکی",
@@ -44,6 +44,7 @@ app.include_router(notifications.router)
 app.include_router(filter_presets.router)
 app.include_router(chat.router)
 app.include_router(installers.router)
+app.include_router(backups.router)
 # پوشه‌ای که نصب‌کننده‌های exe نسخه‌های جدید در آن قرار می‌گیرند (بخش ۸ روادمپ)
 app.mount("/static-installers", StaticFiles(directory="static_installers"), name="static-installers")
 
@@ -89,9 +90,29 @@ def on_startup():
                 db.close()
 
         scheduler = BackgroundScheduler(timezone="Asia/Tehran")
-        scheduler.add_job(scheduled_job, "cron", hour=9, minute=0)  # هر روز ساعت ۹ صبح
+        scheduler.add_job(scheduled_job, "cron", hour=9, minute=0)
         scheduler.start()
         logger.info("زمان‌بند یادآوری پیامکی فعال شد (هر روز ساعت ۹ صبح)")
+
+    # --- بکاپ خودکار شبانه (مستقل از SMS) ---
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from app.services.backup_service import build_backup_bytes, backup_dir, prune
+    import os as _os
+
+    def _nightly_backup():
+        name = f"melkyar-{datetime.now().strftime('%Y%m%d-%H%M')}.json.gz"
+        try:
+            with open(_os.path.join(backup_dir(), name), "wb") as f:
+                f.write(build_backup_bytes())
+            prune()
+            logger.info(f"بکاپ شبانه ساخته شد: {name}")
+        except Exception:
+            logger.exception("بکاپ شبانه ناموفق بود")
+
+    _bs = BackgroundScheduler(timezone="Asia/Tehran")
+    _bs.add_job(_nightly_backup, "cron", hour=2, minute=30)
+    _bs.start()
+    logger.info("بکاپ خودکار شبانه فعال شد (هر روز ۰۲:۳۰)")
 
 @app.get("/health")
 def health_check():

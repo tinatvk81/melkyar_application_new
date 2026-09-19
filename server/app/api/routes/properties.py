@@ -1,10 +1,8 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, Float, or_, and_, String
 from sqlalchemy.orm import Session
-from app.api.routes.client_requests import ClientRequest, RequestStatus, _matching_properties
-
+from sqlalchemy import func, Float, or_, and_, String, text
 from app.db.session import get_db
 from app.models.property import Property, PropertyStatus
 from app.models.user import User, UserRole
@@ -257,7 +255,7 @@ def list_archived_properties(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if status not in ("inactive", "sold"):
+    if status not in ("inactive", "sold", "rented"):
         raise HTTPException(status_code=400, detail="status باید inactive یا sold باشد")
     st = PropertyStatus.sold if status == "sold" else PropertyStatus.inactive
     q = _base_query(db, current_user, status=st)
@@ -404,6 +402,23 @@ def upcoming_renewals(
     )
     return q.order_by(Property.contract_end_date.asc()).all()
 
+@router.get("/stale", response_model=list[PropertyRead])
+def stale_properties(days: int = 30, db: Session = Depends(get_db),
+                     current_user: User = Depends(get_current_user)):
+    """فایل‌های فعالِ بدون هیچ پیگیریِ وصل‌شده و قدیمی‌تر از N روز — لیست کار روزانه."""
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
+    q = _base_query(db, current_user, status=PropertyStatus.active).filter(
+        Property.created_at <= cutoff_dt)
+    try:
+        rows = db.execute(text(
+            "SELECT DISTINCT property_id FROM follow_ups WHERE property_id IS NOT NULL")).all()
+        followed = [r[0] for r in rows]
+    except Exception:
+        followed = []
+    if followed:
+        q = q.filter(~Property.id.in_(followed))
+    return q.order_by(Property.created_at.asc()).limit(100).all()
+
 
 @router.post("/", response_model=PropertyRead)
 def create_property(
@@ -420,10 +435,8 @@ def create_property(
 @router.post("/notify-matches/{property_id}")
 def notify_matching_requests(property_id: int, db: Session = Depends(get_db),
                              current_user: User = Depends(get_current_user)):
-    """
-    بعد از ثبت فایل جدید: درخواست‌های بازِ منطبق را پیدا کن و به مالک هر درخواست اطلاع‌یه بزن.
-    «فروشگاهی که خودش مشتری می‌آورد» — مشاورِ درخواست می‌فهمد فایل تازه‌ای مناسب مشتری‌اش آمده.
-    """
+    """بعد از ثبت فایل جدید: درخواست‌های بازِ منطبق را پیدا کن و به مالک هر درخواست اطلاع‌یه بزن."""
+    from app.api.routes.client_requests import ClientRequest, RequestStatus, _matching_properties
     prop = db.get(Property, property_id)
     if not prop:
         raise HTTPException(404, "فایل پیدا نشد")

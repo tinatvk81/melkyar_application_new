@@ -17,12 +17,12 @@ class PropertyCreate(BaseModel):
     owner_name: Optional[str] = None
     owner_phone: Optional[str] = None
     contract_end_date: Optional[date] = None
+    urgent_until: Optional[date] = None
+    location_url: Optional[str] = None
     details: dict = {}
     notes: Optional[str] = None
     amenities: list[str] | None = None
     property_types: Optional[list[str]] = None
-    urgent_until: Optional[date] = None
-    location_url: Optional[str] = None
 
 
 class PropertyUpdate(PropertyCreate):
