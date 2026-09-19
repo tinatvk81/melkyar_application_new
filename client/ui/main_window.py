@@ -142,11 +142,17 @@ class PropertyListTab(QWidget):
         self.view_toggle_btn = QPushButton("نمایش کارتی 🖼")
         self.view_toggle_btn.setObjectName("chip")
         self.view_toggle_btn.clicked.connect(self._toggle_view)
+        self.urgent_filter_btn = QPushButton("🔥 فوری‌ها")
+        self.urgent_filter_btn.setObjectName("chip")
+        self.urgent_filter_btn.setCheckable(True)
+        self.urgent_filter_btn.setToolTip("فقط فایل‌های فوری: تاریخ فوری رد نشده یا قرارداد زیر ۷ روز")
+        self.urgent_filter_btn.toggled.connect(self._toggle_urgent_filter)
+
         tools_row = QHBoxLayout()
         tools_row.addWidget(self.toggle_filter_btn)
         tools_row.addWidget(self.quick_bar, 1)
+        tools_row.addWidget(self.urgent_filter_btn)
         tools_row.addWidget(self.view_toggle_btn)
-
 
         layout = QVBoxLayout()
         layout.addLayout(tools_row)
@@ -164,8 +170,26 @@ class PropertyListTab(QWidget):
         self.filter_panel.setVisible(show)
         self.toggle_filter_btn.setText("پنهان کردن فیلترها ▲" if show else "نمایش فیلترها ▼")
 
+    def _reload_all(self):
+        self.load_properties()
+        if self.card_view.isVisible():
+            self.card_view.load(**self._current_filters)
+
+    def _toggle_urgent_filter(self, checked: bool):
+        if checked:
+            self._current_filters["urgent_only"] = True
+        else:
+            self._current_filters.pop("urgent_only", None)
+        self._current_page = 1
+        self.load_properties()
+        if self.card_view.isVisible():
+            self.card_view.load(**self._current_filters)
+
     def _handle_apply_filters(self, filters: dict):
+        keep_urgent = self._current_filters.get("urgent_only")
         self._current_filters = filters
+        if keep_urgent:
+            self._current_filters["urgent_only"] = True
         self._current_page = 1
         self.load_properties()
         if self.card_view.isVisible(): self.card_view.load(**self._current_filters)
@@ -179,8 +203,6 @@ class PropertyListTab(QWidget):
         if card_mode:
             self.card_view.load(**self._current_filters)
 
-    def _open_property_card(self, prop):
-        PropertyFormDialog(property_data=prop, on_saved=self.load_properties).exec()
 
 
     def _handle_clear_filters(self):
@@ -234,7 +256,10 @@ class PropertyListTab(QWidget):
                     item0.setData(Qt.DecorationRole, pm)
             self.table.setItem(row, 0, item0)
             self.table.setItem(row, 1, QTableWidgetItem(p.get("city", "")))
-            self.table.setItem(row, 2, QTableWidgetItem(DEAL_TYPE_LABELS.get(p.get("deal_type"), "")))
+            dt_txt = DEAL_TYPE_LABELS.get(p.get("deal_type"), "")
+            if p.get("urgent_until"):
+                dt_txt += "  🔥"
+            self.table.setItem(row, 2, QTableWidgetItem(dt_txt))
             price_item = QTableWidgetItem(p.get("price_display") or "—")
             _pf = price_item.font(); _pf.setBold(True); price_item.setFont(_pf)
             self.table.setItem(row, 3, price_item)
@@ -306,7 +331,7 @@ class PropertyListTab(QWidget):
             q = _urlquote(f"{city} {addr}")
             webbrowser.open(f"https://www.google.com/maps/search/?api=1&query={q}")
 
-            
+
     def _selected_property(self):
         row = self.table.currentRow()
         if row < 0 or row >= len(self._properties_by_row):
@@ -314,7 +339,7 @@ class PropertyListTab(QWidget):
         return self._properties_by_row[row]
 
     def handle_add_new(self):
-        dialog = PropertyFormDialog(property_data=None, on_saved=self.load_properties)
+        dialog = PropertyFormDialog(property_data=None, on_saved=self._reload_all)
         dialog.exec()
 
     def handle_edit_selected(self):
@@ -322,9 +347,12 @@ class PropertyListTab(QWidget):
         if not prop:
             QMessageBox.information(self, "توجه", "ابتدا یک فایل را از فهرست انتخاب کنید.")
             return
-        dialog = PropertyFormDialog(property_data=prop, on_saved=self.load_properties)
+        dialog = PropertyFormDialog(property_data=prop, on_saved=self._reload_all)
         dialog.exec()
 
+    def _open_property_card(self, prop):
+        PropertyFormDialog(property_data=prop, on_saved=self._reload_all).exec()
+        
     def handle_deactivate_selected(self):
         prop = self._selected_property()
         if not prop:

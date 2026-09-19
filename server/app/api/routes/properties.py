@@ -215,7 +215,8 @@ def list_properties(
     page_size: int = DEFAULT_PAGE_SIZE,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    property_type: Optional[str] = None
+    property_type: Optional[str] = None,
+    urgent_only: Optional[bool] = None,
 ):
     """
     نکته‌ی مهم مقیاس: نسخه‌ی قبلی این endpoint یک `.limit(500)` هاردکد داشت که
@@ -234,6 +235,15 @@ def list_properties(
         min_rooms=min_rooms, has_elevator=has_elevator, has_parking=has_parking,
         min_price=min_price, max_price=max_price, search=search, property_type=property_type,
     )
+    if urgent_only:
+        today = date.today()
+        week_later = today + timedelta(days=7)
+        q = q.filter(or_(
+            and_(Property.urgent_until.isnot(None), Property.urgent_until >= today),
+            and_(Property.contract_end_date.isnot(None),
+                 Property.contract_end_date >= today,
+                 Property.contract_end_date <= week_later),
+        ))
     order_clause = _build_order_clause(sort_by, sort_order)
     return _attach_cover_info(db, _paginate(q, page, page_size, order_clause=order_clause))
 

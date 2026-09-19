@@ -1,15 +1,13 @@
-"""ماشین‌حساب رهن ↔ اجاره — ضریب پیش‌فرض ۳۰ (هر ۱۰ هزار اجاره = ۳۰۰ هزار ودیعه)
-قابل تغییر در تنظیمات (settings.json کلید rent_mortgage_factor)."""
+"""ماشین‌حساب رهن ↔ اجاره — ضریب پیش‌فرض از settings.json (کلید rent_mortgage_factor)
+ولی در همان پنجره قابل ویرایش است (مثلاً ضریب متفاوت برای مناطق مختلف)."""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QPushButton, QLineEdit, QComboBox,
+    QPushButton, QComboBox, QLineEdit,
 )
 
 import settings_manager
 from ui.widgets import MoneyLineEdit
-
-FA = {"mortgage_to_rent": "رهن ← اجاره", "rent_to_mortgage": "اجاره ← رهن"}
 
 
 def get_factor() -> float:
@@ -26,7 +24,7 @@ class RentMortgageDialog(QDialog):
         super().__init__(parent)
         self.setLayoutDirection(Qt.RightToLeft)
         self.setWindowTitle("ماشین‌حساب رهن ↔ اجاره")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(440)
 
         form = QFormLayout()
         self.mode_combo = QComboBox()
@@ -36,6 +34,12 @@ class RentMortgageDialog(QDialog):
 
         self.amount_input = MoneyLineEdit("مبلغ (تومان)")
         form.addRow("مبلغ ورودی:", self.amount_input)
+
+        self.factor_input = QLineEdit(str(int(get_factor())))
+        self.factor_input.setToolTip("هر این‌قدر تومان ودیعه = ۱۰ هزار تومان اجارهٔ ماهانه.\n"
+                                     "برای منطقه‌های مختلف همین‌جا عوضش کن — ذخیرهٔ دائمی در settings.json")
+        self.factor_input.editingFinished.connect(self._calc)
+        form.addRow("ضریب تبدیل:", self.factor_input)
 
         self.result_label = QLabel("—")
         self.result_label.setStyleSheet("font-size: 15px; font-weight: 800; color: #f5a623; background: transparent;")
@@ -53,8 +57,7 @@ class RentMortgageDialog(QDialog):
 
         lay = QVBoxLayout(self)
         lay.addLayout(form)
-        lay.addWidget(QLabel(f"ضریب فعلی: هر {int(get_factor()):,} تومان ودیعه = ۱۰ هزار تومان اجاره "
-                             f"(قابل تغییر در settings.json — کلید rent_mortgage_factor)"))
+        lay.addWidget(QLabel("فرمول: اجارهٔ ماهانه = ودیعه ÷ ضریب (بر حسب تومان)"))
         lay.addLayout(btns)
 
     def _calc(self):
@@ -63,13 +66,17 @@ class RentMortgageDialog(QDialog):
         except ValueError:
             self.result_label.setText("مبلغ نامعتبر")
             return
-        f = get_factor()
+        try:
+            factor = float(self.factor_input.text().strip() or get_factor())
+            if factor < 1:
+                factor = get_factor()
+        except (TypeError, ValueError):
+            self.result_label.setText("ضریب نامعتبر")
+            return
         if not amount:
             self.result_label.setText("—")
             return
         if self.mode_combo.currentData() == "mortgage_to_rent":
-            rent = amount / f  # تومان در ماه
-            self.result_label.setText(f"اجارهٔ معادل: {int(round(rent)):,} تومان در ماه")
+            self.result_label.setText(f"اجارهٔ معادل: {int(round(amount / factor)):,} تومان در ماه")
         else:
-            deposit = amount * f
-            self.result_label.setText(f"ودیعهٔ معادل: {int(round(deposit)):,} تومان")
+            self.result_label.setText(f"ودیعهٔ معادل: {int(round(amount * factor)):,} تومان")

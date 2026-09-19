@@ -124,9 +124,19 @@ class PropertyCard(QFrame):
             btn_row.addStretch()
             lay.addLayout(btn_row)
 
+
+    def _copy_phone(self, phone: str):
+        from PySide6.QtWidgets import QApplication
+        QApplication.clipboard().setText(phone)
+
+    def _open_map(self, url: str):
+        import webbrowser
+        webbrowser.open(url)
+
     def mousePressEvent(self, event):
         self.clicked_id.emit(self.prop["id"])
         super().mousePressEvent(event)
+        
 
 
 class PropertyCardView(QWidget):
@@ -204,10 +214,3 @@ class PropertyCardView(QWidget):
             self._on_open(prop)
 
 
-    def _copy_phone(self, phone: str):
-        from PySide6.QtWidgets import QApplication
-        QApplication.clipboard().setText(phone)
-
-    def _open_map(self, url: str):
-        import webbrowser
-        webbrowser.open(url)
