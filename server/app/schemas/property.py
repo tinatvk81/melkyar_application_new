@@ -57,6 +57,9 @@ class PropertyRead(BaseModel):
 
     has_images: bool = False
     cover_image_id: Optional[int] = None
+        # قیمت نمایشی ازپردازش‌شده برای جدول/کارت — قالب بسته به نوع معامله
+    price_display: Optional[str] = None
+    price_per_m2_display: Optional[str] = None
     class Config:
         from_attributes = True
 

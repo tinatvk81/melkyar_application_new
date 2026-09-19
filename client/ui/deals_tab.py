@@ -4,14 +4,16 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QMessageBox, QDialog, QFormLayout, QLineEdit, QTextEdit,
     QFileDialog, QHeaderView,
 )
+from ui.spinner import TableSpinner
 from PySide6.QtWidgets import QTabWidget  
-
+from PySide6.QtGui import QColor
 import os
 import tempfile
 from api_client import api_client, ApiError
 from session import handle_api_error
 from ui.property_form import DEAL_TYPE_LABELS, MoneyLineEdit
 from ui.jalali_date_edit import JalaliDateEdit
+from ui.toast import Toast
 
 DEAL_STATUS_LABELS = {"pending": "در جریان", "finalized": "قطعی", "canceled": "لغو شده"}
 
@@ -157,7 +159,7 @@ class DealFormDialog(QDialog):
         except ApiError as e:
             handle_api_error(self, e, "خطا در ثبت معامله")
             return
-        QMessageBox.information(self, "موفق", "معامله ثبت شد.")
+        Toast.show("✅ معامله ثبت شد")
         self.on_saved()
         self.accept()
 
@@ -530,8 +532,6 @@ class DealsTab(QWidget):
         self.load_deals()
         self.load_balances()
 
-
-
     def _load_individual(self):
         uid = self.individual_combo.currentData()
         self.ind_table.setRowCount(0)
@@ -555,7 +555,10 @@ class DealsTab(QWidget):
             self.ind_table.setItem(r, 4, QTableWidgetItem(_money(d["commission_amount"])))
             self.ind_table.setItem(r, 5, QTableWidgetItem(_money(d["paid_total"])))
             self.ind_table.setItem(r, 6, QTableWidgetItem(_money(d["remaining"])))
-            self.ind_table.setItem(r, 7, QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"])))
+            st_item = QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"]))
+            st_item.setForeground(QColor({"finalized": "#22c55e", "pending": "#f5a623", "canceled": "#ef4444"}.get(d["status"], "#eceaf4")))
+            _f2 = st_item.font(); _f2.setBold(True); st_item.setFont(_f2)
+            self.ind_table.setItem(r, 7, st_item)
             self.ind_table.setItem(r, 8, QTableWidgetItem(d.get("contract_date") or "—"))
         self.individual_label.setText(
             f"معامله: {L['deals_count']} | قطعی: {L['finalized_count']} | کارکرد: {_money(L['earned'])} | "
@@ -589,11 +592,14 @@ class DealsTab(QWidget):
         QMessageBox.information(self, "موفق", f"ذخیره شد:\n{path}")
 
     def load_deals(self):
+        TableSpinner.show(self.table)
         try:
             deals = api_client.list_deals(agent_id=self.agent_filter.currentData())
         except ApiError as e:
+            TableSpinner.hide(self.table)
             handle_api_error(self, e, "خطا")
             return
+        TableSpinner.hide(self.table)
 
         # فیلتر وضعیت — قبلاً هیچ‌جا اعمال نمی‌شد و برای همین تغییرش اثری نداشت
         st = self.status_filter.currentData()
@@ -622,8 +628,11 @@ class DealsTab(QWidget):
             self.table.setItem(r, 5, QTableWidgetItem(_money(d["commission_amount"])))
             self.table.setItem(r, 6, QTableWidgetItem(_money(d["paid_total"])))
             self.table.setItem(r, 7, QTableWidgetItem(_money(d["remaining"])))
-            self.table.setItem(r, 8, QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"])))
-            self.table.setItem(r, 9, QTableWidgetItem(d.get("contract_date") or "—"))
+            st_item = QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"]))
+            _st_colors = {"finalized": "#22c55e", "pending": "#f5a623", "canceled": "#ef4444"}
+            st_item.setForeground(QColor(_st_colors.get(d["status"], "#eceaf4")))
+            _f = st_item.font(); _f.setBold(True); st_item.setFont(_f)
+            self.table.setItem(r, 8, st_item)
 
         if not deals:
             self.count_label.setText("هیچ معامله‌ای با این فیلترها پیدا نشد — «بازه» را روی «همهٔ زمان‌ها» هم تست کن.")

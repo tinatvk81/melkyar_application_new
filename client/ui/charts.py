@@ -26,7 +26,7 @@ class BarChart(QWidget):
         p.fillRect(self.rect(), Qt.transparent)
         if not self._values:
             p.setPen(QColor(150, 160, 200))
-            p.drawText(self.rect(), Qt.AlignCenter, "داده‌ای نیست")
+            p.drawText(self.rect(), Qt.AlignCenter, "برای دیدن نمودار، اول معامله‌ای را قطعی کنید 📊")
             return
         w, h = self.width(), self.height()
         bottom = h - 22

@@ -230,6 +230,13 @@ class NotificationsDialog(QDialog):
             self.table.setItem(r, 2, QTableWidgetItem("جدید" if not n["is_read"] else "خوانده‌شده"))
         self._update_exp_buttons()
 
+        if not rows:
+            self.table.setRowCount(1)
+            empty = QTableWidgetItem("📭 هنوز اطلاعیه‌ای نداری — پیگیری‌های امروز و پیام‌های همکاران اینجا می‌آیند")
+            empty.setForeground(Qt.gray)
+            self.table.setItem(0, 0, empty)
+            self.table.setSpan(0, 0, 1, 3)
+
     def _mark_one(self):
         row = self.table.currentRow()
         if row < 0:

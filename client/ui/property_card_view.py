@@ -53,11 +53,10 @@ class PropertyCard(QFrame):
         title.setWordWrap(True)
         lay.addWidget(title)
 
-        # --- قیمت ---
-        d = prop.get("details") or {}
-        amount = d.get("price") or d.get("total_price") or d.get("deposit_full") or d.get("monthly_rent")
-        price = QLabel(f"{int(amount):,} تومان" if amount else "توافقی")
+        # --- قیمت (از سرور: قالب درست بسته به نوع معامله) ---
+        price = QLabel(prop.get("price_display") or "توافقی")
         price.setStyleSheet("font-weight: 800; font-size: 13px; color: #f5a623;")
+        price.setWordWrap(True)
         lay.addWidget(price)
 
         # --- مشخصات ریز ---

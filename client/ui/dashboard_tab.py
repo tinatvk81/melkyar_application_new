@@ -144,7 +144,10 @@ class DashboardTab(QWidget):
         if api_client.role == "admin":
             try:
                 chart = api_client.get_deals_chart(12)
-                self.chart_deals.set_data([c["month"][5:] for c in chart], [c["count"] for c in chart])
+                if sum(c["count"] for c in chart) == 0:
+                    self.chart_deals.set_data([], [])
+                else:
+                    self.chart_deals.set_data([c["month"][5:] for c in chart], [c["count"] for c in chart])
             except ApiError:
                 pass
             try:

@@ -2,6 +2,8 @@
 فرم افزودن/ویرایش فایل ملکی — فیلدهای مشترک همیشه نمایش داده می‌شوند،
 فیلدهای اختصاصی بر اساس نوع معامله (فروش/پیش‌خرید/اجاره/رهن‌کامل) عوض می‌شوند.
 """
+from ui.toast import Toast
+
 from datetime import date
 from ui.widgets import PropertyTypeSelector
 from PySide6.QtCore import Qt
@@ -337,7 +339,7 @@ class PropertyFormDialog(QDialog):
             handle_api_error(self, e, "خطا در ذخیره‌سازی", critical=True)
             return
 
-        QMessageBox.information(self, "موفق", "فایل با موفقیت ذخیره شد.")
+        Toast.show("✅ فایل ذخیره شد")
         self.on_saved()
 
         if created:

@@ -5,6 +5,10 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
     QFileDialog, QComboBox, QHeaderView, QStackedWidget
 )
+import webbrowser
+from urllib.parse import quote as _urlquote
+from PySide6.QtWidgets import QMenu
+from ui.spinner import TableSpinner
 import math
 from ui.my_ledger_tab import MyLedgerTab
 from PySide6.QtWidgets import QApplication
@@ -45,14 +49,14 @@ class PropertyListTab(QWidget):
 
 
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(9)
         self.table.setHorizontalHeaderLabels(
-            ["عکس", "شهر", "نوع معامله", "متراژ", "اتاق", "آدرس", "تاریخ پایان قرارداد"]
+            ["عکس", "شهر", "نوع معامله", "قیمت", "متری", "متراژ", "اتاق", "آدرس", "تاریخ پایان قرارداد"]
         )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
 
-        header.setSectionResizeMode(5, QHeaderView.Stretch)   # آدرس حالا ستون ۵ است
+        header.setSectionResizeMode(8, QHeaderView.Stretch)   # آدرس حالا ستون ۸ است
         header.setSectionResizeMode(0, QHeaderView.Fixed)
         self.table.setColumnWidth(0, 64)
         self.table.verticalHeader().setDefaultSectionSize(56)
@@ -96,11 +100,17 @@ class PropertyListTab(QWidget):
         refresh_btn = QPushButton("به‌روزرسانی فهرست")
         refresh_btn.clicked.connect(self.load_properties)
 
+        self.contact_btn = QPushButton("📞 تماس / واتساپ")
+        self.contact_btn.setToolTip("کپی شماره، واتساپ مالک، یا باز کردن نقشه‌ی آدرس فایل انتخاب‌شده")
+        self.contact_btn.clicked.connect(self._show_contact_menu)
+
+
         top_bar = QHBoxLayout()
         top_bar.addWidget(add_btn)
         top_bar.addWidget(edit_btn)
         top_bar.addWidget(deactivate_btn)
         top_bar.addWidget(import_btn)
+        top_bar.addWidget(self.contact_btn)
         top_bar.addWidget(export_pdf_btn)
         top_bar.addWidget(export_excel_btn)
         # top_bar.addWidget(archive_btn)
@@ -190,15 +200,17 @@ class PropertyListTab(QWidget):
             self.load_properties()
 
     def load_properties(self):
+        TableSpinner.show(self.table)
         try:
             response = api_client.list_properties(page=self._current_page, **self._current_filters)
         except ApiError as e:
+            TableSpinner.hide(self.table)
             handle_api_error(self, e, "خطا")
             return
+        TableSpinner.hide(self.table)
 
         properties = response["items"]
         self._total_pages = response["total_pages"]
-        # اگر با تغییر فیلتر صفحه‌ی فعلی از تعداد صفحات جدید بیشتر شد، به آخرین صفحه‌ی معتبر برگرد
         if self._current_page > self._total_pages:
             self._current_page = self._total_pages
             if properties == [] and self._total_pages >= 1:
@@ -223,12 +235,14 @@ class PropertyListTab(QWidget):
             self.table.setItem(row, 0, item0)
             self.table.setItem(row, 1, QTableWidgetItem(p.get("city", "")))
             self.table.setItem(row, 2, QTableWidgetItem(DEAL_TYPE_LABELS.get(p.get("deal_type"), "")))
-            self.table.setItem(row, 3, QTableWidgetItem(str(p.get("area_m2") or "")))
-            self.table.setItem(row, 4, QTableWidgetItem(str(p.get("rooms") or "")))
-            self.table.setItem(row, 5, QTableWidgetItem(p.get("address") or ""))
-            self.table.setItem(row, 6, QTableWidgetItem(p.get("contract_end_date") or ""))
-
-
+            price_item = QTableWidgetItem(p.get("price_display") or "—")
+            _pf = price_item.font(); _pf.setBold(True); price_item.setFont(_pf)
+            self.table.setItem(row, 3, price_item)
+            self.table.setItem(row, 4, QTableWidgetItem(p.get("price_per_m2_display") or "—"))
+            self.table.setItem(row, 5, QTableWidgetItem(str(p.get("area_m2") or "")))
+            self.table.setItem(row, 6, QTableWidgetItem(str(p.get("rooms") or "")))
+            self.table.setItem(row, 7, QTableWidgetItem(p.get("address") or ""))
+            self.table.setItem(row, 8, QTableWidgetItem(p.get("contract_end_date") or ""))
 
     def _get_thumb(self, prop_id, image_id):
         if not hasattr(self, "_pix_cache"):
@@ -256,7 +270,43 @@ class PropertyListTab(QWidget):
         PropertyGalleryDialog(prop["id"],
                               property_label=prop.get("address") or prop.get("city") or "").exec()
         
+    def _show_contact_menu(self):
+        prop = self._selected_property()
+        if not prop:
+            QMessageBox.information(self, "توجه", "ابتدا یک فایل انتخاب کنید.")
+            return
+        phone = (prop.get("owner_phone") or "").strip()
+        addr = (prop.get("address") or "").strip()
+        city = (prop.get("city") or "").strip()
 
+        intl = None
+        menu = QMenu(self)
+        act_copy = act_wa = act_map = None
+        if phone:
+            act_copy = menu.addAction(f"📋 کپی شماره مالک ({phone})")
+            digits = phone.replace("+98", "0")
+            if len(digits) >= 10:
+                intl = "98" + digits.lstrip("0")[-10:]
+                act_wa = menu.addAction(f"📲 واتساپ مالک (+{intl})")
+        if city:
+            act_map = menu.addAction("🗺 باز کردن آدرس در نقشه‌ی گوگل")
+        if not (act_copy or act_wa or act_map):
+            QMessageBox.information(self, "توجه", "این فایل تلفن/آدرسی ثبت نکرده است.")
+            return
+        chosen = menu.exec(self.contact_btn.mapToGlobal(self.contact_btn.rect().topLeft()))
+        if chosen is None:
+            return
+        if chosen == act_copy and phone:
+            QApplication.clipboard().setText(phone)
+            from ui.toast import Toast
+            Toast.show("📋 شماره کپی شد")
+        elif chosen == act_wa and intl:
+            webbrowser.open(f"https://wa.me/{intl}")
+        elif chosen == act_map and city:
+            q = _urlquote(f"{city} {addr}")
+            webbrowser.open(f"https://www.google.com/maps/search/?api=1&query={q}")
+
+            
     def _selected_property(self):
         row = self.table.currentRow()
         if row < 0 or row >= len(self._properties_by_row):

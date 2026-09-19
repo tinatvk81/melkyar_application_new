@@ -53,3 +53,5 @@ htmlcov/
 .coverage
 .env
 server/vendor/
+client/upload_installer.bat
+NUL

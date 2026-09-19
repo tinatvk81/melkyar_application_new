@@ -16,6 +16,40 @@ from app.api.deps import get_current_user, require_admin
 from app.models.notification import Notification         
 router = APIRouter(prefix="/properties", tags=["properties"])
 
+def _money_fa(n) -> str:
+    try:
+        return f"{int(float(n)):,}"
+    except (TypeError, ValueError):
+        return "0"
+
+
+def _price_display(deal_type: str, details: dict) -> Optional[str]:
+    """قیمت نمایشی بسته به نوع معامله — برای ستون «قیمت» جدول و بج کارت."""
+    d = details or {}
+    if deal_type == "sale":
+        return f"{_money_fa(d.get('price'))} تومان" if d.get("price") else None
+    if deal_type == "rent":
+        parts = []
+        if d.get("deposit"):
+            parts.append(f"ودیعه {_money_fa(d['deposit'])}")
+        if d.get("monthly_rent"):
+            parts.append(f"اجاره {_money_fa(d['monthly_rent'])}")
+        return " / ".join(parts) if parts else None
+    if deal_type == "mortgage":
+        return f"رهن {_money_fa(d.get('deposit_full'))}" if d.get("deposit_full") else None
+    if deal_type == "presale":
+        return f"پیش‌فروش {_money_fa(d.get('total_price'))}" if d.get("total_price") else None
+    return None
+
+
+def _price_per_m2_display(deal_type: str, details: dict, area) -> Optional[str]:
+    if deal_type != "sale" or not area:
+        return None
+    price = (details or {}).get("price")
+    if not price:
+        return None
+    return f"{_money_fa(round(float(price) / float(area)))} تومان"
+
 
 def _base_query(db: Session, current_user: User, status: PropertyStatus = PropertyStatus.active):
     q = db.query(Property).filter(Property.status == status)
@@ -55,6 +89,9 @@ def _attach_cover_info(db: Session, response: PropertyListResponse) -> PropertyL
         cid = cover_map.get(it.id)
         it.cover_image_id = cid
         it.has_images = cid is not None
+        dt = it.deal_type.value if hasattr(it.deal_type, "value") else str(it.deal_type)
+        it.price_display = _price_display(dt, it.details)
+        it.price_per_m2_display = _price_per_m2_display(dt, it.details, it.area_m2)
     return response
 
 
