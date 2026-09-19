@@ -408,13 +408,18 @@ class DealsTab(QWidget):
         contract_btn = QPushButton("چاپ قولنامه رسمی PDF"); contract_btn.setObjectName("primary")
         contract_btn.clicked.connect(self._contract_pdf)
         actions = QHBoxLayout()
-        for b in (finalize_btn, unfinalize_btn, cancel_btn, payments_btn, pdf_btn, contract_btn):
+
+        excel_btn = QPushButton("خروجی اکسل"); excel_btn.clicked.connect(self._deals_excel)
+
+        for b in (finalize_btn, unfinalize_btn, cancel_btn, payments_btn, pdf_btn, contract_btn, excel_btn):
             actions.addWidget(b)
         actions.addStretch()
         actions.addWidget(self.count_label)
         deals_w = QWidget(); deals_lay = QVBoxLayout(deals_w)
         deals_lay.addLayout(actions)
         deals_lay.addWidget(self.table)
+
+
 
         self.bal_table = QTableWidget()
         self.bal_table.setColumnCount(4)
@@ -759,3 +764,14 @@ class DealsTab(QWidget):
             handle_api_error(self, e, "خطا")
             return
         QMessageBox.information(self, "موفق", f"ذخیره شد:\n{path}")
+
+    def _deals_excel(self):
+        path, _ = QFileDialog.getSaveFileName(self, "ذخیره اکسل معامله‌ها", "deals.xlsx", "Excel Files (*.xlsx)")
+        if not path:
+            return
+        try:
+            api_client.export_deals_excel(path)
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            return
+        QMessageBox.information(self, "موفق", f"فایل اکسل ذخیره شد:\n{path}")

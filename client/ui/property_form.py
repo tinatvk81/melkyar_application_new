@@ -373,6 +373,15 @@ class PropertyFormDialog(QDialog):
             return
 
         Toast.show("✅ فایل ذخیره شد")
+
+        if created:
+            try:
+                res = api_client.notify_request_matches(created["id"])
+                if res.get("notified"):
+                    Toast.show(f"🎯 این فایل با {res['notified']} درخواست مشتری منطبق بود — اطلاع‌یه رفت", kind="info")
+            except ApiError:
+                pass  # اطلاع‌یه‌ی تطبیق حیاتی نیست — بی‌سری رد شود
+                
         self.on_saved()
 
         if created:

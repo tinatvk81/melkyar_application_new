@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, Float, or_, and_, String
 from sqlalchemy.orm import Session
+from app.api.routes.client_requests import ClientRequest, RequestStatus, _matching_properties
 
 from app.db.session import get_db
 from app.models.property import Property, PropertyStatus
@@ -414,6 +415,42 @@ def create_property(
     db.refresh(prop)
     log_activity(db, current_user.id, "create", "property", prop.id, detail=f"{prop.city} — {prop.address or ''}")
     return prop
+
+
+@router.post("/notify-matches/{property_id}")
+def notify_matching_requests(property_id: int, db: Session = Depends(get_db),
+                             current_user: User = Depends(get_current_user)):
+    """
+    بعد از ثبت فایل جدید: درخواست‌های بازِ منطبق را پیدا کن و به مالک هر درخواست اطلاع‌یه بزن.
+    «فروشگاهی که خودش مشتری می‌آورد» — مشاورِ درخواست می‌فهمد فایل تازه‌ای مناسب مشتری‌اش آمده.
+    """
+    prop = db.get(Property, property_id)
+    if not prop:
+        raise HTTPException(404, "فایل پیدا نشد")
+    if current_user.role != UserRole.admin and prop.owner_agent_id != current_user.id:
+        raise HTTPException(403, "دسترسی ندارید")
+
+    open_reqs = db.query(ClientRequest).filter(ClientRequest.status == RequestStatus.open).all()
+    notified = 0
+    for req in open_reqs:
+        owner = db.get(User, req.owner_agent_id)
+        if not owner or not owner.is_active:
+            continue
+        # دسترسی: مالک درخواست باید بتواند این فایل را ببیند (مشاور: فقط فایل‌های خودش؛ مدیر: همه)
+        if owner.role != UserRole.admin and prop.owner_agent_id != owner.id:
+            continue
+        matches = _matching_properties(db, owner, req).filter(Property.id == property_id).first()
+        if matches:
+            db.add(Notification(
+                user_id=req.owner_agent_id,
+                title="🎯 فایل منطبق جدید برای درخواست مشتری",
+                body=(f"فایل #{prop.id} ({prop.city} — {prop.address or ''}) با درخواست "
+                      f"«{req.customer_name}» تطبیق دارد. در تب «درخواست مشتری‌ها» ← «فایل‌های منطبق» ببینش."),
+                entity_type="client_request", entity_id=req.id,
+            ))
+            notified += 1
+    db.commit()
+    return {"notified": notified}
 
 
 @router.put("/{property_id}", response_model=PropertyRead)

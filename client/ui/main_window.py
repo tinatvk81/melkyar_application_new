@@ -5,6 +5,8 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
     QFileDialog, QComboBox, QHeaderView, QStackedWidget
 )
+from PySide6.QtGui import QKeySequence, QShortcut
+from ui.global_search import GlobalSearchDialog
 import webbrowser
 from urllib.parse import quote as _urlquote
 from PySide6.QtWidgets import QMenu
@@ -683,6 +685,8 @@ class MainWindow(QMainWindow):
         lay.addLayout(side_lay)
         lay.addWidget(self._stack, 1)
         self.setCentralWidget(central)
+        sc = QShortcut(QKeySequence("Ctrl+K"), self)
+        sc.activated.connect(self._open_global_search)
 
         self._notif_timer = QTimer(self)
         self._notif_timer.timeout.connect(self._refresh_bell)
@@ -697,14 +701,8 @@ class MainWindow(QMainWindow):
         self._bot_fab.setToolTip("کاتدر فروش هل — سؤال بپرس")
 
 
-    # def _open_bot(self):
-    #     from ui.chat_tab import BotPanel
-    #     if not hasattr(self, "_bot_panel") or self._bot_panel is None:
-    #         self._bot_panel = BotPanel(self)
-    #     p = self._bot_panel
-    #     p.move(16, max(10, self.height() - 90 - p.height() - 8))
-    #     p.show()
-    #     p.raise_()
+    def _open_global_search(self):
+        GlobalSearchDialog(self).exec()
 
     def switch_to_renewals_tab(self):
         self._sidebar.setCurrentRow(self._index["renewals"])

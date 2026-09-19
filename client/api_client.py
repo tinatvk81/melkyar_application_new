@@ -81,6 +81,12 @@ class ApiClient:
         resp = _http.post(f"{self.server_url}/properties/", json=payload, headers=self._headers, timeout=10)
         self._raise_for_status(resp)
         return resp.json()
+        
+    def notify_request_matches(self, property_id: int):
+        resp = requests.post(f"{self.server_url}/properties/notify-matches/{property_id}",
+                             headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
 
     def update_property(self, property_id: int, payload: dict):
         resp = _http.put(
@@ -311,6 +317,11 @@ class ApiClient:
         resp = _http.get(f"{self.server_url}/deals/", params=params, headers=self._headers, timeout=15)
         self._raise_for_status(resp)
         return resp.json()
+
+        
+    def export_deals_excel(self, save_path: str):
+        self._download_to_file(f"{self.server_url}/deals/export/excel", save_path)
+
 
     def create_deal(self, payload: dict):
         resp = _http.post(f"{self.server_url}/deals/", json=payload, headers=self._headers, timeout=15)

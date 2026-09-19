@@ -88,7 +88,55 @@ def create_deal(data: DealCreate, db: Session = Depends(get_db), admin: User = D
     log_activity(db, admin.id, "create", "deal", deal.id, detail=f"معامله {data.deal_amount:,} تومان")
     return _deal_out(db, deal)
 
+@router.get("/export/excel")
+def export_deals_excel(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """خروجی اکسل همهٔ معامله‌ها — همان ستون‌های جدول حسابداری، راست‌به‌چپ."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
 
+    deals = db.query(Deal).order_by(Deal.created_at.desc()).all()
+    agent_names = {u.id: u.full_name for u in db.query(User).all()}
+    STATUS_FA = {"pending": "در جریان", "finalized": "قطعی", "canceled": "لغو شده"}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "deals"
+    ws.sheet_view.rightToLeft = True
+
+    headers = ["#", "مشاور", "فایل", "مبلغ معامله (تومان)", "درصد", "پورسانت (تومان)",
+               "پرداخت‌شده (تومان)", "مانده (تومان)", "وضعیت", "تاریخ قولنامه", "تاریخ ثبت"]
+    ws.append(headers)
+    for c in ws[1]:
+        c.font = Font(bold=True)
+        c.fill = PatternFill("solid", fgColor="F5A623")
+
+    for d in deals:
+        out = _deal_out(db, d)
+        ws.append([
+            d.id,
+            agent_names.get(d.agent_id, ""),
+            f"#{d.property_id}",
+            int(d.deal_amount),
+            float(d.commission_percent),
+            int(d.commission_amount),
+            out["paid_total"],
+            out["remaining"],
+            STATUS_FA.get(d.status.value if hasattr(d.status, "value") else str(d.status), str(d.status)),
+            d.contract_date.isoformat() if d.contract_date else "",
+            (d.created_at or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M"),
+        ])
+
+    for i, w in enumerate([8, 22, 10, 24, 8, 22, 22, 22, 12, 15, 19], start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=deals.xlsx"})
+
+                             
 @router.put("/{deal_id}")
 def update_deal(deal_id: int, data: DealUpdate, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
     d = db.get(Deal, deal_id)
