@@ -21,6 +21,8 @@ class PropertyCreate(BaseModel):
     notes: Optional[str] = None
     amenities: list[str] | None = None
     property_types: Optional[list[str]] = None
+    urgent_until: Optional[date] = None
+    location_url: Optional[str] = None
 
 
 class PropertyUpdate(PropertyCreate):
@@ -53,6 +55,8 @@ class PropertyRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     amenities: list[str] | None = None
+    urgent_until: Optional[date] = None
+    location_url: Optional[str] = None
     property_types: Optional[list[str]] = None
 
     has_images: bool = False

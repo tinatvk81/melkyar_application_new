@@ -6,10 +6,11 @@ from sqlalchemy import text
 from app.db.session import engine
 
 logger = logging.getLogger(__name__)
-
 REQUIRED_COLUMNS = [
     ("deals", "commission_percent", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
     ("commission_payments", "kind", "VARCHAR(16) NOT NULL DEFAULT 'to_agent'"),
+    ("properties", "urgent_until", "DATE"),
+    ("properties", "location_url", "VARCHAR(500)"),
 ]
 
 # ستون‌های پولی: BigInteger سقف ۹.۲×۱۰¹۸ داشت؛ NUMERIC عملاً بی‌نهایت است

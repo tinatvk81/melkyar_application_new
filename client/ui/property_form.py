@@ -3,7 +3,7 @@
 فیلدهای اختصاصی بر اساس نوع معامله (فروش/پیش‌خرید/اجاره/رهن‌کامل) عوض می‌شوند.
 """
 from ui.toast import Toast
-
+from ui.rent_mortgage_calc import RentMortgageDialog
 from datetime import date
 from ui.widgets import PropertyTypeSelector
 from PySide6.QtCore import Qt
@@ -82,6 +82,26 @@ class PropertyFormDialog(QDialog):
         checks_row = QHBoxLayout()
         self.elevator_check = QCheckBox("آسانسور")
         self.parking_check = QCheckBox("پارکینگ")
+        urgent_row = QHBoxLayout()
+        self.urgent_check = QCheckBox("🔥 فوری")
+        self.urgent_check.setToolTip("فایل فوری است — بج فوری در کارت‌ها نمایش داده می‌شود")
+        self.urgent_until_input = JalaliDateEdit(allow_empty=True)
+        self.urgent_until_input.setToolTip("فوری تا چه تاریخ؟ خالی = بدون تاریخ")
+        urgent_row.addWidget(self.urgent_check)
+        urgent_row.addWidget(QLabel("تا تاریخ:"))
+        urgent_row.addWidget(self.urgent_until_input)
+        urgent_row.addStretch()
+        urgent_widget = QWidget()
+        urgent_widget.setLayout(urgent_row)
+        common_form.addRow("فوریت:", urgent_widget)
+
+        self.location_input = QLineEdit()
+        self.location_input.setPlaceholderText("لینک مکان از گوگل‌مپس (اختیاری) — https://maps.app.goo.gl/…")
+        common_form.addRow("لینک نقشه:", self.location_input)
+        calc_btn = QPushButton("🧮 ماشین‌حساب رهن ↔ اجاره")
+        calc_btn.setToolTip("تبدیل سریع بین مبلغ رهن و اجارهٔ ماهانه")
+        calc_btn.clicked.connect(self._open_calc)
+
         checks_row.addWidget(self.elevator_check)
         checks_row.addWidget(self.parking_check)
         checks_widget = QWidget()
@@ -97,6 +117,7 @@ class PropertyFormDialog(QDialog):
         common_form.addRow("تلفن مالک:", self.owner_phone_input)
 
         outer.addLayout(common_form)
+        outer.addWidget(calc_btn)
 
         # --- بخش اختصاصی نوع معامله ---
         outer.addWidget(QLabel("جزئیات معامله:"))
@@ -153,6 +174,11 @@ class PropertyFormDialog(QDialog):
         self.setMinimumSize(430, 540)
         self.resize(540, 700)
 
+
+    def _open_calc(self):
+        RentMortgageDialog(self).exec()
+
+        
     def _clear_details_form(self):
         while self.details_form.rowCount():
             self.details_form.removeRow(0)
@@ -227,11 +253,16 @@ class PropertyFormDialog(QDialog):
 
         if p.get("contract_end_date"):
             self.contract_end_input.set_gregorian_date(date.fromisoformat(p["contract_end_date"]))
+        self.urgent_check.setChecked(bool(p.get("urgent_until")))
+        if p.get("urgent_until"):
+            self.urgent_until_input.set_gregorian_date(date.fromisoformat(p["urgent_until"]))
+        self.location_input.setText(p.get("location_url") or "")
 
     def _collect_payload(self) -> dict:
         deal_type = self.deal_type_combo.currentData()
         details = {}
         contract_end_date = None
+
 
         try:
             if deal_type == "sale":
@@ -263,6 +294,8 @@ class PropertyFormDialog(QDialog):
             "owner_phone": self.owner_phone_input.normalized_text() or None,
             "amenities": self.extra_amenities.get_tags(),
             "contract_end_date": contract_end_date,
+            "urgent_until": self.urgent_until_input.get_iso_string() if self.urgent_check.isChecked() else None,
+            "location_url": self.location_input.text().strip() or None,
             "details": details,
             "notes": self.notes_input.toPlainText().strip() or None,
         }

@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QScrollArea, QVBoxLayout, QHBoxLayout, QGridLayout,
     QFrame, QLabel, QPushButton, QComboBox,
 )
+from datetime import date
 from PySide6.QtWidgets import QSizePolicy
 from api_client import api_client, ApiError
 from session import handle_api_error
@@ -73,19 +74,55 @@ class PropertyCard(QFrame):
         st = QLabel(f"● {status}")
         st.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: bold;")
         badge_row.addWidget(st)
-        if prop.get("contract_end_date"):
-            from datetime import date
+        # فوریِ فایل (تا تاریخ urgent_until) — یا فوری قرارداد (زیر ۷ روز)
+        is_urgent = False
+        if prop.get("urgent_until"):
+            try:
+                y, m, dd = (int(x) for x in prop["urgent_until"].split("-"))
+                if date(y, m, dd) >= date.today():
+                    is_urgent = True
+            except Exception:
+                is_urgent = False
+        if not is_urgent and prop.get("contract_end_date"):
             try:
                 y, m, dd = (int(x) for x in prop["contract_end_date"].split("-"))
                 days = (date(y, m, dd) - date.today()).days
                 if 0 <= days <= 7:
-                    u = QLabel(URGENT_FA)
-                    u.setStyleSheet("color: #fca5a5; font-size: 10px; font-weight: 800;")
-                    badge_row.addWidget(u)
+                    is_urgent = True
             except Exception:
                 pass
+        if is_urgent:
+            u = QLabel(URGENT_FA)
+            u.setStyleSheet("color: #fca5a5; font-size: 10px; font-weight: 800;")
+            badge_row.addWidget(u)
+        n_img = prop.get("cover_image_id")
+        if prop.get("has_images") and n_img:
+            ic = QLabel(f"🖼")
+            ic.setToolTip("این فایل عکس دارد — برای گالری بازش کنید")
+            ic.setStyleSheet("color: rgba(236,234,244,0.7); font-size: 10px;")
+            badge_row.addWidget(ic)
         badge_row.addStretch()
         lay.addLayout(badge_row)
+
+        # --- دکمه‌های تماس/نقشه روی کارت ---
+        phone = (prop.get("owner_phone") or "").strip()
+        loc = (prop.get("location_url") or "").strip()
+        if phone or loc:
+            btn_row = QHBoxLayout()
+            if phone:
+                b = QPushButton(f"📞 {phone}")
+                b.setStyleSheet("font-size: 10px; padding: 4px 8px; border-radius: 8px;")
+                b.setCursor(Qt.PointingHandCursor)
+                b.clicked.connect(lambda _=False, ph=phone: self._copy_phone(ph))
+                btn_row.addWidget(b)
+            if loc:
+                m = QPushButton("🗺 مکان")
+                m.setStyleSheet("font-size: 10px; padding: 4px 8px; border-radius: 8px;")
+                m.setCursor(Qt.PointingHandCursor)
+                m.clicked.connect(lambda _=False, u=loc: self._open_map(u))
+                btn_row.addWidget(m)
+            btn_row.addStretch()
+            lay.addLayout(btn_row)
 
     def mousePressEvent(self, event):
         self.clicked_id.emit(self.prop["id"])
@@ -165,3 +202,12 @@ class PropertyCardView(QWidget):
         prop = next((p for p in self._items if p["id"] == pid), None)
         if prop:
             self._on_open(prop)
+
+
+    def _copy_phone(self, phone: str):
+        from PySide6.QtWidgets import QApplication
+        QApplication.clipboard().setText(phone)
+
+    def _open_map(self, url: str):
+        import webbrowser
+        webbrowser.open(url)

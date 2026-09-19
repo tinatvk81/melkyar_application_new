@@ -70,6 +70,11 @@ class Property(Base):
     # presale: {"total_price": ..., "delivery_date": "1404-06-01", "installments": [...]}
     # rent: {"monthly_rent": ..., "deposit": ...}
     # mortgage: {"deposit_full": ...}
+
+        # فایل فوری: مالک می‌خواهد تا تاریخ مشخص بفروشد — بج 🔥 تا این تاریخ نمایش داده می‌شود
+    urgent_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # لینک مکان روی نقشه (Share از گوگل‌مپس) — اختیاری
+    location_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     notes: Mapped[str] = mapped_column(String(2000), nullable=True)
