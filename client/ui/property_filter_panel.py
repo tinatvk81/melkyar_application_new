@@ -6,6 +6,9 @@ from PySide6.QtWidgets import (
 from ui.widgets import PropertyTypeSelector
 from ui.property_form import DEAL_TYPE_LABELS, MoneyLineEdit
 from PySide6.QtCore import QTimer
+from ui.widgets import PersianSpinBox
+
+
 TRI_STATE_OPTIONS = [("", "فرقی نمی‌کند"), ("yes", "بله"), ("no", "خیر")]
 
 
@@ -68,6 +71,19 @@ class PropertyFilterPanel(QWidget):
         self.max_price_input = MoneyLineEdit()
         self.max_price_input.setPlaceholderText("حداکثر مبلغ (تومان)")
 
+        self.min_build_year_input = PersianSpinBox(minimum=0, maximum=1500)
+        self.min_build_year_input.setSpecialValueText(" ")   # نمایش خالی برای صفر
+        self.max_build_year_input = PersianSpinBox(minimum=0, maximum=1500)
+        self.max_build_year_input.setSpecialValueText(" ")
+        for sb in (self.min_build_year_input, self.max_build_year_input):
+            sb.setMinimumWidth(130)
+            sb.setKeyboardTracking(False)
+
+        self.units_combo = QComboBox()
+        for value, label in [("", "فرقی نمی‌کند"), ("single", "تک‌واحدی"), ("multi", "چندواحدی"),
+                             ("few", "۲ تا ۵ واحدی")]:
+            self.units_combo.addItem(label, value)
+
         self.sort_by_combo = QComboBox()
         for value, label in [
             ("created_at", "تاریخ ثبت"), ("price", "قیمت"), ("area_m2", "متراژ"),
@@ -116,10 +132,16 @@ class PropertyFilterPanel(QWidget):
         grid.addWidget(self.max_price_input, 4, 3)
         grid.addWidget(apply_btn, 4, 4)
         grid.addWidget(clear_btn, 4, 5)
+        grid.addWidget(QLabel("سال ساخت از:"), 5, 0)
+        grid.addWidget(self.min_build_year_input, 5, 1)
+        grid.addWidget(QLabel("تا:"), 5, 2)
+        grid.addWidget(self.max_build_year_input, 5, 3)
+        grid.addWidget(QLabel("واحدها:"), 5, 4)
+        grid.addWidget(self.units_combo, 5, 5)
 
-        grid.addWidget(QLabel("مرتب‌سازی بر اساس:"), 5, 0)
-        grid.addWidget(self.sort_by_combo, 5, 1)
-        grid.addWidget(self.sort_order_combo, 5, 2)
+        grid.addWidget(QLabel("مرتب‌سازی بر اساس:"), 6, 0)
+        grid.addWidget(self.sort_by_combo, 6, 1)
+        grid.addWidget(self.sort_order_combo, 6, 2)
 
         search_row = QHBoxLayout()
         search_row.addWidget(QLabel("جستجوی آزاد:"))
@@ -150,6 +172,10 @@ class PropertyFilterPanel(QWidget):
         self.parking_combo.setCurrentIndex(0)
         self.min_price_input.clear()
         self.max_price_input.clear()
+
+        self.min_build_year_input.setValue(0)
+        self.max_build_year_input.setValue(0)
+        self.units_combo.setCurrentIndex(0)
         # جلوگیری از دو بار فراخوانی on_clear/on_apply: چون تغییر این دو کمبو به
         # _handle_apply وصل است، سیگنالشان را موقتاً خاموش می‌کنیم.
         self.sort_by_combo.blockSignals(True)
@@ -190,6 +216,19 @@ class PropertyFilterPanel(QWidget):
         if max_price is not None:
             filters["max_price"] = max_price
 
+        if self.min_build_year_input.value() > 0:
+            filters["min_build_year"] = self.min_build_year_input.value()
+        if self.max_build_year_input.value() > 0:
+            filters["max_build_year"] = self.max_build_year_input.value()
+        u = self.units_combo.currentData()
+        if u == "single":
+            filters["max_total_units"] = 1
+        elif u == "few":
+            filters["min_total_units"] = 2
+            filters["max_total_units"] = 5
+        elif u == "multi":
+            filters["min_total_units"] = 2
+            
         filters["sort_by"] = self.sort_by_combo.currentData()
         filters["sort_order"] = self.sort_order_combo.currentData()
         types = self.type_selector.get_selected_keys()

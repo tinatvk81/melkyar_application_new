@@ -219,6 +219,7 @@ def list_properties(
     min_build_year: Optional[int] = None,
     max_build_year: Optional[int] = None,
     max_total_units: Optional[int] = None,
+    min_total_units: Optional[int] = None,
 ):
     """
     نکته‌ی مهم مقیاس: نسخه‌ی قبلی این endpoint یک `.limit(500)` هاردکد داشت که
@@ -254,6 +255,9 @@ def list_properties(
         q = q.filter(Property.build_year <= max_build_year)
     if max_total_units is not None:
         q = q.filter(Property.total_units <= max_total_units)
+
+    if min_total_units is not None:
+        q = q.filter(Property.total_units >= min_total_units)
     return _attach_cover_info(db, _paginate(q, page, page_size, order_clause=order_clause))
 
 

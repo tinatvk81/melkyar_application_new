@@ -65,12 +65,10 @@ class PropertyCard(QFrame):
 
         conv = prop.get("convertible_note")
         if conv and prop.get("deal_type") == "mortgage":
-        if conv:
             conv_lbl = QLabel(f"🔁 قابل تبدیل: {conv}")
             conv_lbl.setStyleSheet("color: #7dd3fc; font-size: 10px;")
             conv_lbl.setWordWrap(True)
             lay.addWidget(conv_lbl)
-
 
         # --- مشخصات ریز ---
         _a = prop.get('area_m2')
