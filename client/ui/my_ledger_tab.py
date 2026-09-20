@@ -92,6 +92,7 @@ class MyLedgerTab(QWidget):
         for r, d in enumerate(deals):
             self.deals_table.setItem(r, 0, QTableWidgetItem(str(d["id"])))
             self.deals_table.setItem(r, 1, QTableWidgetItem(f"#{d['property_id']}"))
+            self.deals_table.setItem(r, 1, QTableWidgetItem(f"#{d['property_id']}"))
             self.deals_table.setItem(r, 3, QTableWidgetItem(f"{float(d['commission_percent']):g}٪"))
             self.deals_table.setItem(r, 4, QTableWidgetItem(_money(d["commission_amount"])))
             self.deals_table.setItem(r, 5, QTableWidgetItem(_money(d["paid_total"])))

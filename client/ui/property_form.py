@@ -7,7 +7,7 @@ from ui.rent_mortgage_calc import RentMortgageDialog
 from datetime import date
 from ui.widgets import PropertyTypeSelector
 from PySide6.QtCore import Qt
-
+from ui.geo_widgets import GeoCitySelector, GeoDistrictSelector
 from ui.widgets import (PersianSpinBox, PersianDoubleSpinBox, MoneyLineEdit,
                         PhoneLineEdit, TagInputWidget)
 from api_client import api_client, ApiError
@@ -19,6 +19,9 @@ from PySide6.QtWidgets import (
     QSpinBox, QCheckBox, QTextEdit, QPushButton, QHBoxLayout, QWidget,
     QMessageBox, QLabel, QScrollArea, QFrame
 )
+
+from ui.geo_data import DEFAULT_CITY
+
 DEAL_TYPE_LABELS = {
     "sale": "فروش",
     "presale": "پیش‌خرید",
@@ -65,10 +68,15 @@ class PropertyFormDialog(QDialog):
         self.type_selector = PropertyTypeSelector()
         common_form.addRow("نوع ملک:", self.type_selector)
 
-        self.city_input = QLineEdit()
-        common_form.addRow("شهر:", self.city_input)
-        self.district_input = QLineEdit()
-        common_form.addRow("منطقه/محله:", self.district_input)
+        self.geo_city = GeoCitySelector()
+        common_form.addRow("شهر:", self.geo_city)
+        self.geo_district = GeoDistrictSelector()
+        common_form.addRow("منطقه/محله:", self.geo_district)
+        # تغییر شهر → حالت منطقه/محله عوض شود (مشهد یا غیره)
+        self.geo_city.province_combo.currentTextChanged.connect(
+            lambda _: self.geo_district.set_for_city(self.geo_city.get_city()))
+        self.geo_city.city_combo.currentTextChanged.connect(
+            lambda _: self.geo_district.set_for_city(self.geo_city.get_city()))
         self.address_input = QLineEdit()
         common_form.addRow("آدرس:", self.address_input)
 
@@ -98,9 +106,6 @@ class PropertyFormDialog(QDialog):
         self.location_input = QLineEdit()
         self.location_input.setPlaceholderText("لینک مکان از گوگل‌مپس (اختیاری) — https://maps.app.goo.gl/…")
         common_form.addRow("لینک نقشه:", self.location_input)
-        calc_btn = QPushButton("🧮 ماشین‌حساب رهن ↔ اجاره")
-        calc_btn.setToolTip("تبدیل سریع بین مبلغ رهن و اجارهٔ ماهانه")
-        calc_btn.clicked.connect(self._open_calc)
 
         checks_row.addWidget(self.elevator_check)
         checks_row.addWidget(self.parking_check)
@@ -175,10 +180,6 @@ class PropertyFormDialog(QDialog):
         self.resize(540, 700)
 
 
-    def _open_calc(self):
-        RentMortgageDialog(self).exec()
-
-        
     def _clear_details_form(self):
         while self.details_form.rowCount():
             self.details_form.removeRow(0)
@@ -226,8 +227,8 @@ class PropertyFormDialog(QDialog):
 
         self.type_selector.set_selected(p.get("property_types") or [])
 
-        self.city_input.setText(p.get("city") or "")
-        self.district_input.setText(p.get("district") or "")
+        self.geo_city.set_city(p.get("city") or DEFAULT_CITY)
+        self.geo_district.set_value(p.get("district") or "", self.geo_city.get_city())
         self.address_input.setText(p.get("address") or "")
         self.area_input.setValue(p.get("area_m2") or 0)
         self.rooms_input.setValue(p.get("rooms") or 0)
@@ -282,8 +283,8 @@ class PropertyFormDialog(QDialog):
 
         return {
             "deal_type": deal_type,
-            "city": self.city_input.text().strip(),
-            "district": self.district_input.text().strip() or None,
+            "city": self.geo_city.get_city(),
+            "district": self.geo_district.get_value() or None,
             "address": self.address_input.text().strip() or None,
             "area_m2": self.area_input.value() or None,
             "rooms": self.rooms_input.value() or None,
@@ -311,7 +312,7 @@ class PropertyFormDialog(QDialog):
         PropertyGalleryDialog(self.property_data["id"], property_label=label).exec()
 
     def handle_save(self):
-        if not self.city_input.text().strip():
+        if not self.geo_city.get_city():
             QMessageBox.warning(self, "خطا", "وارد کردن شهر الزامی است.")
             return
 
@@ -330,7 +331,7 @@ class PropertyFormDialog(QDialog):
         try:
             matches = api_client.check_duplicate(
                 owner_phone=self.owner_phone_input.normalized_text() or None,
-                city=self.city_input.text().strip() or None,
+                city=self.geo_city.get_city() or None,
                 address=self.address_input.text().strip() or None,
             )
         except ApiError:
