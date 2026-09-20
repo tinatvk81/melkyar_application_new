@@ -12,6 +12,7 @@ from urllib.parse import quote as _urlquote
 from PySide6.QtWidgets import QMenu
 from ui.spinner import TableSpinner
 import math
+from ui.jalali_util import to_jalali_str
 from ui.my_ledger_tab import MyLedgerTab
 from PySide6.QtWidgets import QApplication
 from ui.styles import apply_persian_rtl_style
@@ -246,7 +247,6 @@ class PropertyListTab(QWidget):
         )
         self.prev_page_btn.setEnabled(self._current_page > 1)
         self.next_page_btn.setEnabled(self._current_page < self._total_pages)
-
         self._properties_by_row = properties
         self._delegate.set_term(self.filter_panel.search_input.text())
         self.table.setRowCount(len(properties))
@@ -266,10 +266,12 @@ class PropertyListTab(QWidget):
             _pf = price_item.font(); _pf.setBold(True); price_item.setFont(_pf)
             self.table.setItem(row, 3, price_item)
             self.table.setItem(row, 4, QTableWidgetItem(p.get("price_per_m2_display") or "—"))
-            self.table.setItem(row, 5, QTableWidgetItem(str(p.get("area_m2") or "")))
+            _a = p.get("area_m2")
+            _a_txt = f"{_a:g}" if _a else ""
+            self.table.setItem(row, 5, QTableWidgetItem(_a_txt))
             self.table.setItem(row, 6, QTableWidgetItem(str(p.get("rooms") or "")))
             self.table.setItem(row, 7, QTableWidgetItem(p.get("address") or ""))
-            self.table.setItem(row, 8, QTableWidgetItem(p.get("contract_end_date") or ""))
+            self.table.setItem(row, 8, QTableWidgetItem(to_jalali_str(p.get("contract_end_date"))))
 
     def _get_thumb(self, prop_id, image_id):
         if not hasattr(self, "_pix_cache"):
@@ -453,8 +455,9 @@ class RenewalsTab(QWidget):
         for row, p in enumerate(self._items):
             self.table.setItem(row, 0, QTableWidgetItem(p.get("city", "")))
             self.table.setItem(row, 1, QTableWidgetItem(p.get("address") or ""))
+            
             self.table.setItem(row, 2, QTableWidgetItem(p.get("owner_name") or ""))
-            self.table.setItem(row, 3, QTableWidgetItem(p.get("contract_end_date") or ""))
+            self.table.setItem(row, 3, QTableWidgetItem(to_jalali_str(p.get("contract_end_date"))))
             self.table.setItem(row, 4, QTableWidgetItem(p.get("owner_phone") or ""))
 
     def _open_selected(self):

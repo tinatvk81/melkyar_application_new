@@ -87,16 +87,3 @@ migration from "office server / WSL" to Runflare cloud hosting.
 - [ ] Code signing if distribution widens
 - [ ] Telegram/SMS notification channel (future need)
 ```
-
-
-## اعمال در گیت
-
-```bash
-cd /mnt/c/Users/Tina/Desktop/app
-# فایل‌ها را ذخیره کن: README.md (جایگزین), README_EN.md, roadmap-v4.md, roadmap-v4_EN.md, SUMMARY.md
-git add README.md README_EN.md roadmap-v4.md roadmap-v4_EN.md SUMMARY.md
-git commit -m "docs: bilingual README, roadmap v1.4 (complete), short summaries"
-git push
-```
-
-💡 پیشنهاد کوچک: در `README.md` فارسی، یک خط بالای فایل اضافه کن: `[English](README_EN.md)` و در انگلیسی هم `[فارسی](README.md)` — گیت‌هاب خودش اولی را نمایش می‌دهد و پرچم‌زدن زبان هم حرفه‌ای‌تر است. اگر خواستی، فایل `SUMMARY.md` جدا هم می‌توانی بسازی یا خلاصه را داخل README بیاوری (که الان هر دو نسخه شامل خلاصه در پاراگراف اول‌شان هستند).

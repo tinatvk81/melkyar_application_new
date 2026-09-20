@@ -372,7 +372,7 @@ class PropertyFormDialog(QDialog):
             handle_api_error(self, e, "خطا در ذخیره‌سازی", critical=True)
             return
 
-        Toast.show("✅ فایل ذخیره شد")
+        Toast.show("✅ فایل ذخیره شد — برای افزودن عکس از «گالری تصاویر» استفاده کن")
 
         if created:
             try:
@@ -380,17 +380,9 @@ class PropertyFormDialog(QDialog):
                 if res.get("notified"):
                     Toast.show(f"🎯 این فایل با {res['notified']} درخواست مشتری منطبق بود — اطلاع‌یه رفت", kind="info")
             except ApiError:
-                pass  # اطلاع‌یه‌ی تطبیق حیاتی نیست — بی‌سری رد شود
+                pass  # اطلاع‌یه‌ی تطبیق حیاتی نیست
                 
         self.on_saved()
 
-        if created:
-            answer = QMessageBox.question(
-                self, "افزودن عکس",
-                "آیا می‌خواهید همین حالا برای این فایل عکس اضافه کنید؟",
-            )
-            if answer == QMessageBox.Yes:
-                label = created.get("address") or created.get("city") or ""
-                PropertyGalleryDialog(created["id"], property_label=label).exec()
 
         self.accept()

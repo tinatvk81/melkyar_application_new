@@ -14,7 +14,7 @@ from session import handle_api_error
 from ui.property_form import DEAL_TYPE_LABELS, MoneyLineEdit
 from ui.jalali_date_edit import JalaliDateEdit
 from ui.toast import Toast
-
+from ui.jalali_util import to_jalali_str
 DEAL_STATUS_LABELS = {"pending": "در جریان", "finalized": "قطعی", "canceled": "لغو شده"}
 
 
@@ -321,9 +321,10 @@ class PaymentsDialog(QDialog):
         for r, p in enumerate(rows):
             self.table.setItem(r, 0, QTableWidgetItem(_money(p["amount"])))
             self.table.setItem(r, 1, QTableWidgetItem(KIND_FA.get(p.get("kind", "to_agent"), "—")))
-            self.table.setItem(r, 2, QTableWidgetItem(p.get("paid_date") or "—"))
+            self.table.setItem(r, 2, QTableWidgetItem(to_jalali_str(p.get("paid_date"))))
             self.table.setItem(r, 3, QTableWidgetItem(p.get("note") or ""))
             self.table.setItem(r, 4, QTableWidgetItem("دارد" if p.get("has_receipt") else "—"))
+
         self.total_label.setText(
             f"پورسانت: {_money(self.deal['commission_amount'])} — به مشاور: {_money(to_total)} — "
             f"از مشاور: {_money(from_total)} — مانده: {_money(self.deal['commission_amount'] - to_total + from_total)} تومان")
@@ -731,11 +732,15 @@ class DealsTab(QWidget):
             self.table.setItem(r, 5, QTableWidgetItem(_money(d["commission_amount"])))
             self.table.setItem(r, 6, QTableWidgetItem(_money(d["paid_total"])))
             self.table.setItem(r, 7, QTableWidgetItem(_money(d["remaining"])))
+
             st_item = QTableWidgetItem(DEAL_STATUS_LABELS.get(d["status"], d["status"]))
             _st_colors = {"finalized": "#22c55e", "pending": "#f5a623", "canceled": "#ef4444"}
             st_item.setForeground(QColor(_st_colors.get(d["status"], "#eceaf4")))
             _f = st_item.font(); _f.setBold(True); st_item.setFont(_f)
+            
             self.table.setItem(r, 8, st_item)
+            self.table.setItem(r, 9, QTableWidgetItem(to_jalali_str(d.get("contract_date"))))
+
 
         if not deals:
             self.count_label.setText("هیچ معامله‌ای با این فیلترها پیدا نشد — «بازه» را روی «همهٔ زمان‌ها» هم تست کن.")

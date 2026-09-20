@@ -21,14 +21,28 @@ def to_english_digits(text: str) -> str:
 
 
 class PersianSpinBox(QSpinBox):
-    """تایپ دستی + دکمهٔ بالا/پایین + پذیرش ارقام فارسی"""
+    """تایپ دستی + دکمهٔ بالا/پایین + پذیرش ارقام فارسی.
+    UX: با ورود فوکوس، اگر مقدار صفر بود خودکار پاک می‌شود تا «۰۲» نشود («۲»)."""
 
     def __init__(self, minimum=0, maximum=10_000_000, parent=None):
         super().__init__(parent)
         self.setRange(minimum, maximum)
         self.setAccelerated(True)
-        self.setMinimumWidth(110)          # هر دو کلاس
+        self.setMinimumWidth(110)
         self.setStyleSheet("QAbstractSpinBox { min-width: 90px; padding: 6px 8px; }")
+        self.setKeyboardTracking(False)  # تغییر فقط با Enter/فوکوس‌خروج اعمال شود، نه هر کلید
+        self.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        # با ورود فوکوس (کلیک یا Tab): اگر مقدار صفر/خالی است، متن را انتخاب کن
+        # تا اولین رقمِ تایپ‌شده جایگزین شود — نه اینکه جلوِ صفر بنشیند.
+        from PySide6.QtCore import QEvent
+        if obj is self and event.type() == QEvent.FocusIn:
+            if self.value() == 0:
+                self.lineEdit().clear()
+            else:
+                self.lineEdit().selectAll()
+        return super().eventFilter(obj, event)
 
     def validate(self, text, pos):
         conv = to_english_digits(text)
@@ -43,7 +57,6 @@ class PersianSpinBox(QSpinBox):
         except ValueError:
             return self.minimum()
 
-
 class PersianDoubleSpinBox(QDoubleSpinBox):
     """مثل بالا ولی اعشاری (برای متراژ)"""
 
@@ -56,7 +69,21 @@ class PersianDoubleSpinBox(QDoubleSpinBox):
         if suffix:
             self.setSuffix(suffix)
         self.setAccelerated(True)
+        self.setKeyboardTracking(False)
+        self.installEventFilter(self)
 
+
+
+    def eventFilter(self, obj, event):
+        from PySide6.QtCore import QEvent
+        if obj is self and event.type() == QEvent.FocusIn:
+            if float(self.value()) == 0.0:
+                self.lineEdit().clear()
+            else:
+                self.lineEdit().selectAll()
+        return super().eventFilter(obj, event)
+
+        
     def validate(self, text, pos):
         conv = to_english_digits(text)
         if conv.strip() in ("", self.suffix().strip()):

@@ -9,6 +9,8 @@ from PySide6.QtWidgets import QSizePolicy
 from api_client import api_client, ApiError
 from session import handle_api_error
 from ui.property_form import DEAL_TYPE_LABELS, PropertyFormDialog
+from ui.jalali_util import to_jalali_str
+
 
 STATUS_BADGE = {"active": ("فعال", "#86efac"), "sold": ("فروخته‌شده", "#f5a623"), "inactive": ("غیرفعال", "#fca5a5"),
 "rented": ("اجاره‌داده‌شده", "#7dd3fc"),}
@@ -62,9 +64,11 @@ class PropertyCard(QFrame):
         lay.addWidget(price)
 
         # --- مشخصات ریز ---
-        specs = QLabel(f"📐 {prop.get('area_m2') or '—'} متر | 🛏 {prop.get('rooms') or '—'} اتاق | "
+        _a = prop.get('area_m2')
+        _a_txt = f"{_a:g}" if _a else "—"
+        specs = QLabel(f"📐 {_a_txt} متر | 🛏 {prop.get('rooms') or '—'} اتاق | "
                        f"{DEAL_TYPE_LABELS.get(prop.get('deal_type'), '')}"
-                       + (f" | 📅 {prop['contract_end_date']}" if prop.get("contract_end_date") else ""))
+                       + (f" | 📅 {to_jalali_str(prop['contract_end_date'])}" if prop.get("contract_end_date") else ""))
         specs.setStyleSheet("color: rgba(236,234,244,0.65); font-size: 10px;")
         specs.setWordWrap(True)
         lay.addWidget(specs)

@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 from api_client import api_client, ApiError
 from session import handle_api_error
 from ui.property_form import DEAL_TYPE_LABELS
-
+from ui.jalali_util import to_jalali_str
 
 class ArchiveTab(QWidget):
     """بایگانی: فایل‌های غیرفعال + فروخته‌شده + اجاره‌داده‌شده."""
@@ -85,7 +85,7 @@ class ArchiveTab(QWidget):
             self.table.setItem(r, 2, QTableWidgetItem(DEAL_TYPE_LABELS.get(p.get("deal_type"), "")))
             self.table.setItem(r, 3, QTableWidgetItem(str(p.get("area_m2") or "")))
             self.table.setItem(r, 4, QTableWidgetItem(p.get("address") or ""))
-            self.table.setItem(r, 5, QTableWidgetItem((p.get("created_at") or "")[:10]))
+            self.table.setItem(r, 5, QTableWidgetItem(to_jalali_str(p.get("created_at"), with_time=False)))
 
     def _reactivate(self):
         row = self.table.currentRow()

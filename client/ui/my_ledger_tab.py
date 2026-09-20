@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QAbstractItemView, QFileDialog,
 )
-
+from ui.jalali_util import to_jalali_str
 from api_client import api_client, ApiError
 from session import handle_api_error
 
@@ -92,13 +92,12 @@ class MyLedgerTab(QWidget):
         for r, d in enumerate(deals):
             self.deals_table.setItem(r, 0, QTableWidgetItem(str(d["id"])))
             self.deals_table.setItem(r, 1, QTableWidgetItem(f"#{d['property_id']}"))
-            self.deals_table.setItem(r, 2, QTableWidgetItem(_money(d["deal_amount"])))
             self.deals_table.setItem(r, 3, QTableWidgetItem(f"{float(d['commission_percent']):g}٪"))
             self.deals_table.setItem(r, 4, QTableWidgetItem(_money(d["commission_amount"])))
             self.deals_table.setItem(r, 5, QTableWidgetItem(_money(d["paid_total"])))
             self.deals_table.setItem(r, 6, QTableWidgetItem(_money(d["remaining"])))
             self.deals_table.setItem(r, 7, QTableWidgetItem(STATUS_FA.get(d["status"], d["status"])))
-            self.deals_table.setItem(r, 8, QTableWidgetItem(d.get("contract_date") or "—"))
+            self.deals_table.setItem(r, 8, QTableWidgetItem(to_jalali_str(d.get("contract_date"))))
         # انتخاب خودکار اولین معامله → جدول پرداخت‌ها همان اول پر می‌شود (اگر پرداختی داشته باشد)
         if deals:
             self.deals_table.selectRow(0)
@@ -120,7 +119,7 @@ class MyLedgerTab(QWidget):
         for r, p in enumerate(pays):
             self.pays_table.setItem(r, 0, QTableWidgetItem(_money(p["amount"])))
             self.pays_table.setItem(r, 1, QTableWidgetItem(KIND_FA.get(p.get("kind", "to_agent"), "—")))
-            self.pays_table.setItem(r, 2, QTableWidgetItem(p.get("paid_date") or "—"))
+            self.pays_table.setItem(r, 2, QTableWidgetItem(to_jalali_str(p.get("paid_date"))))
             self.pays_table.setItem(r, 3, QTableWidgetItem(p.get("note") or ""))
             self.pays_table.setItem(r, 4, QTableWidgetItem("دارد" if p.get("has_receipt") else "—"))
         self.receipt_btn.setEnabled(bool(pays))
