@@ -17,6 +17,7 @@ REQUIRED_COLUMNS = [
     ("properties", "build_year", "INTEGER"),
     ("properties", "total_units", "INTEGER"),
     ("properties", "convertible_note", "VARCHAR(500)"),
+    ("properties", "deleted_at", "TIMESTAMPTZ"),
 ]
 
 MONEY_COLUMNS = [

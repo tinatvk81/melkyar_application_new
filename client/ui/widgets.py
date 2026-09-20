@@ -123,28 +123,49 @@ class MoneyLineEdit(QLineEdit):
         if self.words_label is None:
             self._install_words_label()
 
-            
+
     def _install_words_label(self):
-        """لیبل زیر خود فیلد در همان layout والد جا می‌گیرد."""
+        """لیبل حروف را درست زیر خود فیلد جا می‌دهد — با پیدا کردن layout مستقیم.
+        QFormLayout → insertRow؛ بقیه → insertWidget."""
         try:
-            from PySide6.QtWidgets import QVBoxLayout
+            from PySide6.QtWidgets import QLabel, QFormLayout
             parent = self.parentWidget()
             if parent is None:
                 return
-            lay = parent.layout()
+            lay = self._find_own_layout(parent.layout())
             if lay is None:
                 return
-            from PySide6.QtWidgets import QLabel
-            self.words_label = QLabel("")
-            self.words_label.setStyleSheet(
-                "color: #7dd3fc; background: transparent; font-size: 9px; border: none;")
-            self.words_label.setWordWrap(True)
-            self.words_label.setVisible(False)
-            # بعد از خود فیلد درج می‌کنیم — هر فرمی که باشد کار می‌کند
-            lay.insertWidget(lay.indexOf(self) + 1, self.words_label)
+            if self.words_label is None:
+                self.words_label = QLabel("")
+                self.words_label.setStyleSheet(
+                    "color: #7dd3fc; background: transparent; font-size: 9px; border: none;")
+                self.words_label.setWordWrap(True)
+                self.words_label.setVisible(False)
+            if isinstance(lay, QFormLayout):
+                row, _role = lay.getWidgetPosition(self)
+                if row >= 0:
+                    lay.insertRow(row + 1, self.words_label)
+            else:
+                idx = lay.indexOf(self)
+                lay.insertWidget(idx + 1, self.words_label)
         except Exception:
             self.words_label = None
 
+    def _find_own_layout(self, layout):
+        """بازگشتی: layoutی که مستقیم self را دارد (فیلد داخل QFormLayout یا VBox تو در تو)."""
+        if layout is None:
+            return None
+        if layout.indexOf(self) != -1:
+            return layout
+        for i in range(layout.count()):
+            sub = layout.itemAt(i).layout()
+            if sub is not None:
+                found = self._find_own_layout(sub)
+                if found is not None:
+                    return found
+        return None
+
+        
     def _update_words(self):
         if self.words_label is None:
             return

@@ -677,4 +677,12 @@ class ApiClient:
     def download_backup(self, filename: str, save_path: str):
         self._download_to_file(f"{self.server_url}/backups/download/{filename}", save_path)
 
+
+    def soft_delete_property(self, property_id: int):
+        resp = _http.post(f"{self.server_url}/properties/{property_id}/soft-delete",
+                          headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+        
 api_client = ApiClient()  # نمونه‌ی مشترک در کل برنامه‌ی کلاینت

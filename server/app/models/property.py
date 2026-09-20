@@ -80,6 +80,9 @@ class Property(Base):
     # rent: {"monthly_rent": ..., "deposit": ...}
     # mortgage: {"deposit_full": ...}
 
+    # حذف نرم: فقط مدیر؛ از همهٔ لیست‌ها/جست‌وجوها مخفی می‌شود ولی رکورد می‌ماند
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    
     details: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     notes: Mapped[str] = mapped_column(String(2000), nullable=True)

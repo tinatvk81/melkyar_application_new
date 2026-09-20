@@ -29,6 +29,7 @@ def _base(db: Session, user: User):
 def _matching_properties(db: Session, user: User, req: ClientRequest):
     """منطق تطبیق فایل با درخواست — همان قواعد request_matches، قابل استفاده در هر جای سرور."""
     q = db.query(Property).filter(Property.status == PropertyStatus.active)
+    q = q.filter(Property.deleted_at.is_(None))
     if user.role != UserRole.admin:
         q = q.filter(Property.owner_agent_id == user.id)
     q = q.filter(Property.deal_type == req.deal_type)

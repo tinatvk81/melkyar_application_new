@@ -83,6 +83,10 @@ class PropertyListTab(QWidget):
         edit_btn = QPushButton("ویرایش فایل انتخاب‌شده")
         edit_btn.clicked.connect(self.handle_edit_selected)
 
+        if api_client.role == "admin":
+            self.delete_btn = QPushButton("🗑 حذف فایل")
+            self.delete_btn.setToolTip("حذف نرم — فقط مدیر؛ با تأیید تایپی")
+            self.delete_btn.clicked.connect(self.handle_delete_selected)
 
 
         deactivate_btn = QPushButton("غیرفعال کردن فایل انتخاب‌شده")
@@ -111,6 +115,8 @@ class PropertyListTab(QWidget):
         top_bar = QHBoxLayout()
         top_bar.addWidget(add_btn)
         top_bar.addWidget(edit_btn)
+        if api_client.role == "admin":
+            top_bar.addWidget(self.delete_btn)
         top_bar.addWidget(deactivate_btn)
         top_bar.addWidget(import_btn)
         top_bar.addWidget(self.contact_btn)
@@ -361,6 +367,34 @@ class PropertyListTab(QWidget):
 
     def _open_property_card(self, prop):
         PropertyFormDialog(property_data=prop, on_saved=self._reload_all).exec()
+        
+
+    def handle_delete_selected(self):
+        if api_client.role != "admin":
+            return
+        prop = self._selected_property()
+        if not prop:
+            QMessageBox.information(self, "توجه", "ابتدا یک فایل انتخاب کنید.")
+            return
+        label = prop.get("address") or prop.get("city") or f"#{prop['id']}"
+        QMessageBox.warning(
+            self, "حذف فایل",
+            f"⚠️ این عمل فایل «{label}» را از همهٔ فهرست‌ها و جست‌وجوها حذف می‌کند.\n"
+            "رکورد در دیتابیس می‌ماند و فقط با کمک پشتیبانی قابل بازگردانی است.")
+        text, ok = QInputDialog.getText(
+            self, "تأیید حذف",
+            f"برای تأیید حذف فایل #{prop['id']}، کلمهٔ «حذف» را دقیقاً تایپ کن:")
+        if not ok or text.strip() != "حذف":
+            return
+        try:
+            api_client.soft_delete_property(prop["id"])
+        except ApiError as e:
+            handle_api_error(self, e, "خطا در حذف")
+            return
+        from ui.toast import Toast
+        Toast.show("🗑 فایل حذف شد")
+        self._reload_all()
+
         
     def handle_deactivate_selected(self):
         prop = self._selected_property()

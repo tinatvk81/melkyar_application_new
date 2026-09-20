@@ -52,6 +52,7 @@ def _price_per_m2_display(deal_type: str, details: dict, area) -> Optional[str]:
 
 def _base_query(db: Session, current_user: User, status: PropertyStatus = PropertyStatus.active):
     q = db.query(Property).filter(Property.status == status)
+    q = q.filter(Property.deleted_at.is_(None))
     # --- قانون کلیدی دسترسی: این فیلتر در لایه‌ی سرور اجرا می‌شود، نه در UI ---
     # مشاور فقط فایل‌های خودش را می‌بیند؛ مدیر همه را می‌بیند.
     if current_user.role != UserRole.admin:
@@ -307,7 +308,8 @@ def check_duplicate(
     rows = (
         db.query(Property, User.full_name)
         .join(User, Property.owner_agent_id == User.id)
-        .filter(Property.status == PropertyStatus.active, or_(*conds))
+        .filter(Property.status == PropertyStatus.active, or_(*conds), Property.deleted_at.is_(None))
+        
         .order_by(Property.created_at.desc())
         .limit(10)
         .all()
@@ -521,4 +523,18 @@ def deactivate_property(
     prop.status = PropertyStatus.inactive
     db.commit()
     log_activity(db, current_user.id, "deactivate", "property", prop.id, detail=f"{prop.city} — {prop.address or ''}")
+    return {"ok": True}
+
+
+@router.post("/{property_id}/soft-delete")
+def soft_delete_property(property_id: int, db: Session = Depends(get_db),
+                         admin: User = Depends(require_admin)):
+    """حذف نرم — فقط مدیر. رکورد می‌ماند ولی از همهٔ لیست‌ها/جست‌وجوها مخفی می‌شود."""
+    prop = _base_query(db, admin).filter(Property.id == property_id).first()
+    if not prop:
+        raise HTTPException(404, "فایل پیدا نشد یا دسترسی ندارید")
+    prop.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    log_activity(db, admin.id, "deactivate", "property", prop.id,
+                 detail=f"حذف نرم — {prop.city} — {prop.address or ''}")
     return {"ok": True}

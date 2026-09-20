@@ -53,6 +53,7 @@ class DealEditDialog(QDialog):
         cancel_btn = QPushButton("انصراف"); cancel_btn.clicked.connect(self.reject)
         row = QHBoxLayout(); row.addStretch(); row.addWidget(save_btn); row.addWidget(cancel_btn)
         lay = QVBoxLayout(self); lay.addLayout(form); lay.addLayout(row)
+        self.amount_input.ensure_words_label()
 
     def _save(self):
         payload = {"deal_amount": self.amount_input.value(),
