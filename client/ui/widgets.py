@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QPushButton, QListWidget, QListWidgetItem, QListView, QMessageBox,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem, QApplication,
 )
+from number_to_words import money_to_words
+
 
 PERSIAN = "۰۱۲۳۴۵۶۷۸۹"
 ARABIC = "٠١٢٣٤٥٦٧٨٩"
@@ -83,7 +85,7 @@ class PersianDoubleSpinBox(QDoubleSpinBox):
                 self.lineEdit().selectAll()
         return super().eventFilter(obj, event)
 
-        
+
     def validate(self, text, pos):
         conv = to_english_digits(text)
         if conv.strip() in ("", self.suffix().strip()):
@@ -101,13 +103,61 @@ class PersianDoubleSpinBox(QDoubleSpinBox):
 
 
 class MoneyLineEdit(QLineEdit):
-    """مبلغ: فقط رقم، ارقام فارسی هم قبول، جداکنندهٔ هزارگان خودکار"""
+    """مبلغ: فقط رقم، ارقام فارسی هم قبول، جداکنندهٔ هزارگان خودکار
+    + لیبل زندهٔ «به حروف» زیر فیلد."""
 
     def __init__(self, placeholder="مثلاً 5200000000"):
         super().__init__()
         self.setPlaceholderText(placeholder)
         self.setAlignment(Qt.AlignRight)
         self.editingFinished.connect(self._format)
+
+        # لیبل حروف — والد همان فرم است؛ با textChanged آپدیت می‌شود
+        self.words_label = None
+        self.textChanged.connect(self._update_words)
+        self._install_words_label()
+
+
+    def ensure_words_label(self):
+        """اگر لیبل حروف هنوز ساخته نشده (چون موقع init هنوز به layout اضافه نشده بود)، حالا بساز."""
+        if self.words_label is None:
+            self._install_words_label()
+
+            
+    def _install_words_label(self):
+        """لیبل زیر خود فیلد در همان layout والد جا می‌گیرد."""
+        try:
+            from PySide6.QtWidgets import QVBoxLayout
+            parent = self.parentWidget()
+            if parent is None:
+                return
+            lay = parent.layout()
+            if lay is None:
+                return
+            from PySide6.QtWidgets import QLabel
+            self.words_label = QLabel("")
+            self.words_label.setStyleSheet(
+                "color: #7dd3fc; background: transparent; font-size: 9px; border: none;")
+            self.words_label.setWordWrap(True)
+            self.words_label.setVisible(False)
+            # بعد از خود فیلد درج می‌کنیم — هر فرمی که باشد کار می‌کند
+            lay.insertWidget(lay.indexOf(self) + 1, self.words_label)
+        except Exception:
+            self.words_label = None
+
+    def _update_words(self):
+        if self.words_label is None:
+            return
+        try:
+            v = self.value()
+        except ValueError:
+            self.words_label.setVisible(False)
+            return
+        if v:
+            self.words_label.setText("✍️ " + money_to_words(v))
+            self.words_label.setVisible(True)
+        else:
+            self.words_label.setVisible(False)
 
     def value(self):
         t = to_english_digits(self.text()).replace(",", "").replace(" ", "").strip()
@@ -119,6 +169,7 @@ class MoneyLineEdit(QLineEdit):
 
     def set_value(self, v):
         self.setText(f"{int(v):,}" if v is not None else "")
+        self._update_words()
 
     def _format(self):
         try:
@@ -126,7 +177,7 @@ class MoneyLineEdit(QLineEdit):
         except ValueError:
             return
         self.setText(f"{v:,}" if v is not None else "")
-
+        self._update_words()
 
 class PhoneLineEdit(QLineEdit):
     """تلفن: فقط رقم فارسی/انگلیسی و + ؛ خروج به شکل استاندارد 09..."""

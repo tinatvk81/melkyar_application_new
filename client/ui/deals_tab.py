@@ -137,6 +137,8 @@ class DealFormDialog(QDialog):
         lay.addLayout(form)
         lay.addLayout(btns)
 
+        self.amount_input.ensure_words_label()
+
     def handle_save(self):
         if self.prop_combo.currentIndex() < 0 or self.agent_combo.currentIndex() < 0:
             QMessageBox.warning(self, "خطا", "فایل و مشاور را انتخاب کنید.")
@@ -225,7 +227,8 @@ class PaymentDialog(QDialog):
         btns = QHBoxLayout(); btns.addStretch(); btns.addWidget(save_btn); btns.addWidget(cancel_btn)
 
         lay = QVBoxLayout(self); lay.addLayout(form); lay.addLayout(btns)
-
+        self.amount_input.ensure_words_label()
+        
     def _browse(self):
         path, _ = QFileDialog.getOpenFileName(self, "انتخاب عکس رسید", "", "Images (*.jpg *.jpeg *.png *.webp)")
         if path:

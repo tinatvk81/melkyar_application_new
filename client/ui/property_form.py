@@ -177,6 +177,10 @@ class PropertyFormDialog(QDialog):
         outer.addLayout(btn_row)
 
         content = QWidget()
+
+        for w in (self.price_input, self.total_price_input, self.monthly_rent_input,
+                  self.deposit_input, self.deposit_full_input):
+            w.ensure_words_label()
         content.setLayout(outer)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
