@@ -1,6 +1,7 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form
+
 from sqlalchemy.orm import Session
 from sqlalchemy import func, Float, or_, and_, String, text
 from app.db.session import get_db
@@ -13,6 +14,8 @@ from app.models.property_image import PropertyImage
 from datetime import date, timedelta, datetime, timezone
 from app.api.deps import get_current_user, require_admin   
 from app.models.notification import Notification         
+
+
 router = APIRouter(prefix="/properties", tags=["properties"])
 
 def _money_fa(n) -> str:
@@ -479,7 +482,28 @@ def notify_matching_requests(property_id: int, db: Session = Depends(get_db),
     db.commit()
     return {"notified": notified}
 
+@router.post("/flag-shared/{property_id}")
+def flag_shared_listing(property_id: int, other_property_id: int = Form(...),
+                        db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """مشاور دوم فایل مشابه را با تأیید ثبت کرد → به مدیر اطلاع‌یه بده که این آگهی/فایل
+    توسط دو نفر (مالک مشترک) ثبت شده است."""
+    from app.models.notification import Notification as N
+    prop = db.get(Property, property_id)
+    other = db.get(Property, other_property_id)
+    if not prop or not other:
+        raise HTTPException(404, "فایل پیدا نشد")
+    if current_user.role != UserRole.admin and (prop.owner_agent_id != current_user.id or other.owner_agent_id != current_user.id):
+        raise HTTPException(403, "دسترسی ندارید")
+    admins = db.query(User).filter(User.role == UserRole.admin).all()
+    for a in admins:
+        db.add(N(user_id=a.id, title="🤝 فایل مشابه توسط دو مشاور ثبت شد",
+                 body=(f"فایل #{prop.id} ({prop.city} — {prop.address or ''}) توسط {current_user.full_name} ثبت شد؛ "
+                       f"فایل مشابه #{other.id} قبلاً ثبت بوده. تصمیم: نگه‌داشتن هر دو / ادغام، با تو."),
+                 entity_type="property", entity_id=prop.id))
+    db.commit()
+    return {"ok": True}
 
+    
 @router.put("/{property_id}", response_model=PropertyRead)
 def update_property(
     property_id: int,

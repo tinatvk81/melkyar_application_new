@@ -88,7 +88,15 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
+    def flag_shared_listing(self, property_id: int, other_property_id: int):
+        resp = _http.post(
+            f"{self.server_url}/properties/flag-shared/{property_id}",
+            data={"other_property_id": str(other_property_id)},
+            headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
 
+        
     def update_property(self, property_id: int, payload: dict):
         resp = _http.put(
             f"{self.server_url}/properties/{property_id}", json=payload, headers=self._headers, timeout=10
@@ -684,5 +692,16 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
-        
+
+    def flag_shared_listing(self, property_id: int, other_property_id: int):
+        from PySide6.QtWidgets import QApplication  # noqa — خنثی؛ فقط برای هم‌خوانی importهای محلی
+        import requests
+        resp =_http.post(
+            f"{self.server_url}/properties/flag-shared/{property_id}",
+            data={"other_property_id": str(other_property_id)},
+            headers=self._headers, timeout=15)
+        self._raise_for_status(resp)
+        return resp.json()
+
+
 api_client = ApiClient()  # نمونه‌ی مشترک در کل برنامه‌ی کلاینت

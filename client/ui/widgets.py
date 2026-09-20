@@ -59,32 +59,37 @@ class PersianSpinBox(QSpinBox):
         except ValueError:
             return self.minimum()
 
+
 class PersianDoubleSpinBox(QDoubleSpinBox):
-    """مثل بالا ولی اعشاری (برای متراژ)"""
+    """اعشاری (متراژ و...) — تایپ مستقیم پس از کلیک؛ صفر اولیه پاک می‌شود؛
+    suffix فقط وقتی فوکوس نیست نمایش داده می‌شود تا تایپ خراب نشود."""
 
     def __init__(self, minimum=0.0, maximum=100000.0, decimals=1, suffix="", parent=None):
         super().__init__(parent)
         self.setRange(minimum, maximum)
-        self.setMinimumWidth(110)          # هر دو کلاس
+        self.setMinimumWidth(110)
         self.setStyleSheet("QAbstractSpinBox { min-width: 90px; padding: 6px 8px; }")
         self.setDecimals(decimals)
-        if suffix:
-            self.setSuffix(suffix)
+        self._suffix = suffix or ""
         self.setAccelerated(True)
         self.setKeyboardTracking(False)
-        self.installEventFilter(self)
+        self.setSpecialValueText(" ")          # مقدار حداقل = خالی دیده شود
+        self.setGroupSeparatorShown(False)
 
+    def focusInEvent(self, event):
+        # suffix را بردار و متن خالی/انتخاب‌شده بگذار تا تایپ از نو شروع شود
+        if self._suffix:
+            self.setSuffix("")
+        if float(self.value()) == float(self.minimum()):
+            self.lineEdit().clear()
+        else:
+            self.lineEdit().selectAll()
+        super().focusInEvent(event)
 
-
-    def eventFilter(self, obj, event):
-        from PySide6.QtCore import QEvent
-        if obj is self and event.type() == QEvent.FocusIn:
-            if float(self.value()) == 0.0:
-                self.lineEdit().clear()
-            else:
-                self.lineEdit().selectAll()
-        return super().eventFilter(obj, event)
-
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        if self._suffix:
+            self.setSuffix(self._suffix)   # برگرداندن suffix بعد از خروج
 
     def validate(self, text, pos):
         conv = to_english_digits(text)
@@ -94,13 +99,12 @@ class PersianDoubleSpinBox(QDoubleSpinBox):
         return state, text, pos
 
     def valueFromText(self, text):
-        t = to_english_digits(text).replace(self.suffix(), "").strip()
+        t = to_english_digits(text).replace(self._suffix, "").strip()
         t = t.replace("،", "").replace(",", "")
         try:
             return float(t) if t else self.minimum()
         except ValueError:
             return self.minimum()
-
 
 class MoneyLineEdit(QLineEdit):
     """مبلغ: فقط رقم، ارقام فارسی هم قبول، جداکنندهٔ هزارگان خودکار
@@ -165,7 +169,7 @@ class MoneyLineEdit(QLineEdit):
                     return found
         return None
 
-        
+
     def _update_words(self):
         if self.words_label is None:
             return

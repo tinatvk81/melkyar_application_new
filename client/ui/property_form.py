@@ -221,11 +221,6 @@ class PropertyFormDialog(QDialog):
             self.details_form.addRow("قابل تبدیل به:", self.convertible_input)
 
 
-        elif deal_type == "sale":
-            self.details_form.addRow("قیمت (تومان):", self.price_input)
-            self.details_form.addRow("قیمت هر متر:", self.price_per_m2_label)
-            # convertible در sale نمایش داده نمی‌شود ولی مقدار حفظ می‌شود
-
 
     def _update_price_per_m2(self):
         if self.deal_type_combo.currentData() != "sale":
@@ -352,8 +347,8 @@ class PropertyFormDialog(QDialog):
             QMessageBox.warning(self, "خطا در مقدار عددی", str(e))
             return
 
-
         # --- هشدار فایل مشابه/تکراری (مسدودکننده نیست؛ تصمیم با کاربر است) ---
+        confirmed_similar_id = None
         try:
             matches = api_client.check_duplicate(
                 owner_phone=self.owner_phone_input.normalized_text() or None,
@@ -377,6 +372,8 @@ class PropertyFormDialog(QDialog):
                    "\n\nبا این حال فایل جدید ثبت شود؟")
             if QMessageBox.question(self, "هشدار فایل مشابه", msg) != QMessageBox.Yes:
                 return
+            if not self.property_data:
+                confirmed_similar_id = matches[0]["id"]
 
         created = None
         try:
@@ -384,7 +381,7 @@ class PropertyFormDialog(QDialog):
                 payload["version"] = self.property_data["version"]
                 api_client.update_property(self.property_data["id"], payload)
             else:
-                created = api_client.create_property(payload)  # پاسخ شامل id فایل تازه است
+                created = api_client.create_property(payload)
         except ApiError as e:
             if e.status_code == 409:
                 QMessageBox.warning(
@@ -407,9 +404,14 @@ class PropertyFormDialog(QDialog):
                 if res.get("notified"):
                     Toast.show(f"🎯 این فایل با {res['notified']} درخواست مشتری منطبق بود — اطلاع‌یه رفت", kind="info")
             except ApiError:
-                pass  # اطلاع‌یه‌ی تطبیق حیاتی نیست
-                
-        self.on_saved()
+                pass
+            # فایل مشابه با تأیید کاربر ثبت شد → مدیر را مطلع کن (فایل مشترک دو مشاور)
+            if confirmed_similar_id:
+                try:
+                    api_client.flag_shared_listing(created["id"], confirmed_similar_id)
+                except ApiError:
+                    pass
 
+        self.on_saved()
 
         self.accept()
