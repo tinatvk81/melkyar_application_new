@@ -14,6 +14,9 @@ REQUIRED_COLUMNS = [
     ("properties", "location_url", "VARCHAR(500)"),
     ("deals", "agent2_id", "INTEGER"),
     ("deals", "commission_percent_agent2", "DOUBLE PRECISION"),
+    ("properties", "build_year", "INTEGER"),
+    ("properties", "total_units", "INTEGER"),
+    ("properties", "convertible_note", "VARCHAR(500)"),
 ]
 
 MONEY_COLUMNS = [

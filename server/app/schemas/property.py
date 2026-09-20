@@ -23,7 +23,9 @@ class PropertyCreate(BaseModel):
     notes: Optional[str] = None
     amenities: list[str] | None = None
     property_types: Optional[list[str]] = None
-
+    build_year: Optional[int] = None
+    total_units: Optional[int] = None
+    convertible_note: Optional[str] = None
 
 class PropertyUpdate(PropertyCreate):
     status: Optional[PropertyStatus] = None
@@ -58,7 +60,12 @@ class PropertyRead(BaseModel):
     urgent_until: Optional[date] = None
     location_url: Optional[str] = None
     property_types: Optional[list[str]] = None
+    build_year: Optional[int] = None
+    total_units: Optional[int] = None
+    convertible_note: Optional[str] = None
 
+
+    
     has_images: bool = False
     cover_image_id: Optional[int] = None
         # قیمت نمایشی ازپردازش‌شده برای جدول/کارت — قالب بسته به نوع معامله

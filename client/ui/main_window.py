@@ -261,6 +261,8 @@ class PropertyListTab(QWidget):
             dt_txt = DEAL_TYPE_LABELS.get(p.get("deal_type"), "")
             if p.get("urgent_until"):
                 dt_txt += "  🔥"
+            if p.get("convertible_note"):
+                dt_txt += "  🔁"
             self.table.setItem(row, 2, QTableWidgetItem(dt_txt))
             price_item = QTableWidgetItem(p.get("price_display") or "—")
             _pf = price_item.font(); _pf.setBold(True); price_item.setFont(_pf)
@@ -270,7 +272,10 @@ class PropertyListTab(QWidget):
             _a_txt = f"{_a:g}" if _a else ""
             self.table.setItem(row, 5, QTableWidgetItem(_a_txt))
             self.table.setItem(row, 6, QTableWidgetItem(str(p.get("rooms") or "")))
-            self.table.setItem(row, 7, QTableWidgetItem(p.get("address") or ""))
+            addr_item = QTableWidgetItem(p.get("address") or "")
+            if p.get("convertible_note"):
+                addr_item.setToolTip(f"🔁 قابل تبدیل: {p['convertible_note']}")
+            self.table.setItem(row, 7, addr_item)
             self.table.setItem(row, 8, QTableWidgetItem(to_jalali_str(p.get("contract_end_date"))))
 
     def _get_thumb(self, prop_id, image_id):

@@ -66,6 +66,14 @@ class Property(Base):
     contract_end_date: Mapped[date] = mapped_column(Date, nullable=True, index=True)
     urgent_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     location_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+        # سال ساخت (شمسی) — اختیاری
+    build_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # تعداد واحد کل ساختمان (تک‌واحدی = ۱) — اختیاری
+    total_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # «قابل تبدیل به» — فقط اجاره/رهن: متن آزاد مالک، مثلاً «۷۰۰ - ماهی ۳۰» یا «۸۰۰ - ماهی ۲۰»
+    convertible_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    
     # فیلدهای اختصاصی هر نوع معامله، مثلا:
     # sale: {"price": 5200000000}
     # presale: {"total_price": ..., "delivery_date": "1404-06-01", "installments": [...]}

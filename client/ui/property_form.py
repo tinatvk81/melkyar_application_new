@@ -3,7 +3,6 @@
 فیلدهای اختصاصی بر اساس نوع معامله (فروش/پیش‌خرید/اجاره/رهن‌کامل) عوض می‌شوند.
 """
 from ui.toast import Toast
-from ui.rent_mortgage_calc import RentMortgageDialog
 from datetime import date
 from ui.widgets import PropertyTypeSelector
 from PySide6.QtCore import Qt
@@ -46,6 +45,10 @@ class PropertyFormDialog(QDialog):
         self.setWindowTitle("ویرایش فایل" if property_data else "افزودن فایل جدید")
         self.resize(480, 620)
 
+        self.convertible_input = QLineEdit()
+        self.convertible_input.setPlaceholderText("مثلاً: ۷۰۰ - ماهی ۳۰  یا  ۸۰۰ - ماهی ۲۰")
+        self.convertible_input.setToolTip("شرط تبدیل ودیعه/رهن به اجارهٔ ماهانه — فقط برای اجاره/رهن")
+
         self._build_ui()
         if property_data:
             self._fill_from_existing()
@@ -87,6 +90,14 @@ class PropertyFormDialog(QDialog):
         self.rooms_input = PersianSpinBox(minimum=0, maximum=50)
         common_form.addRow("تعداد اتاق:", self.rooms_input)
 
+        self.build_year_input = PersianSpinBox(minimum=1300, maximum=1500)
+        self.build_year_input.setToolTip("سال ساخت به شمسی — خالی = نامشخص")
+        common_form.addRow("سال ساخت (شمسی):", self.build_year_input)
+
+        self.total_units_input = PersianSpinBox(minimum=0, maximum=500)
+        self.total_units_input.setToolTip("تعداد واحد کل ساختمان — تک‌واحدی = ۱")
+        common_form.addRow("تعداد واحد کل:", self.total_units_input)
+
         checks_row = QHBoxLayout()
         self.elevator_check = QCheckBox("آسانسور")
         self.parking_check = QCheckBox("پارکینگ")
@@ -122,7 +133,6 @@ class PropertyFormDialog(QDialog):
         common_form.addRow("تلفن مالک:", self.owner_phone_input)
 
         outer.addLayout(common_form)
-        outer.addWidget(calc_btn)
 
         # --- بخش اختصاصی نوع معامله ---
         outer.addWidget(QLabel("جزئیات معامله:"))
@@ -203,6 +213,14 @@ class PropertyFormDialog(QDialog):
         elif deal_type == "mortgage":
             self.details_form.addRow("مبلغ رهن کامل (تومان):", self.deposit_full_input)
             self.details_form.addRow(self.contract_end_row_label, self.contract_end_input)
+
+            self.details_form.addRow("قابل تبدیل به:", self.convertible_input)
+
+
+        elif deal_type == "sale":
+            self.details_form.addRow("قیمت (تومان):", self.price_input)
+            self.details_form.addRow("قیمت هر متر:", self.price_per_m2_label)
+            # convertible در sale نمایش داده نمی‌شود ولی مقدار حفظ می‌شود
 
 
     def _update_price_per_m2(self):
@@ -299,6 +317,10 @@ class PropertyFormDialog(QDialog):
             "location_url": self.location_input.text().strip() or None,
             "details": details,
             "notes": self.notes_input.toPlainText().strip() or None,
+            "build_year": self.build_year_input.value() or None,
+            "total_units": self.total_units_input.value() or None,
+            "convertible_note": self.convertible_input.text().strip() or None,
+
         }
 
     def handle_open_gallery(self):

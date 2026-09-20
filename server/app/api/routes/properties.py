@@ -216,6 +216,9 @@ def list_properties(
     current_user: User = Depends(get_current_user),
     property_type: Optional[str] = None,
     urgent_only: Optional[bool] = None,
+    min_build_year: Optional[int] = None,
+    max_build_year: Optional[int] = None,
+    max_total_units: Optional[int] = None,
 ):
     """
     نکته‌ی مهم مقیاس: نسخه‌ی قبلی این endpoint یک `.limit(500)` هاردکد داشت که
@@ -244,6 +247,13 @@ def list_properties(
                  Property.contract_end_date <= week_later),
         ))
     order_clause = _build_order_clause(sort_by, sort_order)
+
+    if min_build_year is not None:
+        q = q.filter(Property.build_year >= min_build_year)
+    if max_build_year is not None:
+        q = q.filter(Property.build_year <= max_build_year)
+    if max_total_units is not None:
+        q = q.filter(Property.total_units <= max_total_units)
     return _attach_cover_info(db, _paginate(q, page, page_size, order_clause=order_clause))
 
 
@@ -255,9 +265,7 @@ def list_archived_properties(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if status not in ("inactive", "sold", "rented"):
-        raise HTTPException(status_code=400, detail="status باید inactive یا sold باشد")
-    st = PropertyStatus.sold if status == "sold" else PropertyStatus.inactive
+    st = {"sold": PropertyStatus.sold, "rented": PropertyStatus.rented}.get(status, PropertyStatus.inactive)
     q = _base_query(db, current_user, status=st)
     return _paginate(q, page, page_size)
 

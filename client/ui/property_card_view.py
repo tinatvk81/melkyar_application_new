@@ -63,15 +63,31 @@ class PropertyCard(QFrame):
         price.setWordWrap(True)
         lay.addWidget(price)
 
+        conv = prop.get("convertible_note")
+        if conv and prop.get("deal_type") == "mortgage":
+        if conv:
+            conv_lbl = QLabel(f"🔁 قابل تبدیل: {conv}")
+            conv_lbl.setStyleSheet("color: #7dd3fc; font-size: 10px;")
+            conv_lbl.setWordWrap(True)
+            lay.addWidget(conv_lbl)
+
+
         # --- مشخصات ریز ---
         _a = prop.get('area_m2')
         _a_txt = f"{_a:g}" if _a else "—"
+        extras = []
+        if prop.get("build_year"):
+            extras.append(f"🏗 {prop['build_year']}")
+        if prop.get("total_units"):
+            extras.append(f"🏢 {prop['total_units']} واحد")
         specs = QLabel(f"📐 {_a_txt} متر | 🛏 {prop.get('rooms') or '—'} اتاق | "
                        f"{DEAL_TYPE_LABELS.get(prop.get('deal_type'), '')}"
+                       + ("".join(f" | {e}" for e in extras))
                        + (f" | 📅 {to_jalali_str(prop['contract_end_date'])}" if prop.get("contract_end_date") else ""))
         specs.setStyleSheet("color: rgba(236,234,244,0.65); font-size: 10px;")
         specs.setWordWrap(True)
         lay.addWidget(specs)
+
 
         # --- برچسب وضعیت + فوری ---
         badge_row = QHBoxLayout()
