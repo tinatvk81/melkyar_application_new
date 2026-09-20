@@ -3,9 +3,10 @@ from PySide6.QtWidgets import QListWidget
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
-    QFileDialog, QComboBox, QHeaderView, QStackedWidget
+    QFileDialog, QComboBox, QHeaderView, QStackedWidget, QFrame, QAbstractItemView
 )
-from PySide6.QtGui import QKeySequence, QShortcut
+from collections import Counter
+from PySide6.QtCore import Signal
 from ui.global_search import GlobalSearchDialog
 import webbrowser
 from urllib.parse import quote as _urlquote
@@ -29,10 +30,10 @@ from ui.property_form import PropertyFormDialog, DEAL_TYPE_LABELS
 from ui.import_excel_dialog import ImportExcelDialog
 from ui.user_form_dialog import UserFormDialog, ROLE_LABELS
 from ui.property_filter_panel import PropertyFilterPanel
-from PySide6.QtGui import QPixmap
 from ui.property_gallery_dialog import PropertyGalleryDialog
 from ui.dashboard_tab import DashboardTab
 from ui.deals_tab import DealsTab
+from PySide6.QtGui import QKeySequence, QShortcut, QColor
 from ui.archive_tab import ArchiveTab
 from ui.agent_center_tab import AgentCenterTab
 
@@ -506,23 +507,69 @@ class RenewalsTab(QWidget):
 
 
 
-class ActivityLogTab(QWidget):
-    """فقط برای مدیر: تاریخچه‌ی کامل عملیات (چه کسی، چه زمانی، چه کاری)."""
+class _StatCard(QFrame):
+    """کارت آمار قابل‌کلیک برای فیلتر عملیات."""
+    clicked = Signal()
 
-    ENTITY_TYPE_LABELS = {"": "همه", "property": "فایل ملکی", "user": "کاربر"}
-    ACTION_LABELS = {
-        "create": "ثبت", "update": "ویرایش", "deactivate": "غیرفعال‌سازی", "activate": "فعال‌سازی",
-        "reactivate": "بازگردانی", "reset_password": "ریست رمز", "login": "ورود",
-        "import_excel": "ایمپورت اکسل", "upload_image": "آپلود عکس", "delete_image": "حذف عکس",
+    def __init__(self, title, color):
+        super().__init__()
+        self.setObjectName("statCard")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedSize(150, 74)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(8, 10, 8, 10)
+        self.value_label = QLabel("0")
+        self.value_label.setAlignment(Qt.AlignCenter)
+        self.value_label.setStyleSheet(
+            f"font-size: 20px; font-weight: 800; color: {color}; background: transparent; border: none;")
+        t = QLabel(title)
+        t.setAlignment(Qt.AlignCenter)
+        t.setStyleSheet("font-size: 11px; color: rgba(232,236,248,0.65); background: transparent; border: none;")
+        v.addWidget(self.value_label)
+        v.addWidget(t)
+
+    def mousePressEvent(self, e):
+        self.clicked.emit()
+        super().mousePressEvent(e)
+
+
+class ActivityLogTab(QWidget):
+    """فقط برای مدیر: تاریخچهٔ کامل عملیات — با کارت‌های آماری و بج‌های رنگی."""
+
+    ENTITY_TYPE_LABELS = {
+        "": "همه", "property": "فایل ملکی", "user": "کاربر", "deal": "معامله",
+        "deal_payment": "پرداخت", "client_request": "درخواست مشتری", "follow_up": "پیگیری",
     }
+    ACTION_LABELS = {
+        "create": "ثبت", "update": "ویرایش", "delete": "حذف",
+        "deactivate": "غیرفعال‌سازی", "activate": "فعال‌سازی", "reactivate": "بازگردانی",
+        "reset_password": "ریست رمز", "login": "ورود", "logout": "خروج",
+        "import_excel": "ایمپورت اکسل", "upload_image": "آپلود عکس", "delete_image": "حذف عکس",
+        "finalize": "قطعی‌کردن",
+    }
+    ACTION_COLORS = {
+        "create": "#22c55e", "login": "#7dd3fc", "update": "#f5a623", "delete": "#ef4444",
+        "deactivate": "#f87171", "activate": "#86efac", "reactivate": "#2dd4bf",
+        "reset_password": "#c4b5fd", "import_excel": "#fdba74",
+        "upload_image": "#86efac", "delete_image": "#f87171", "finalize": "#22c55e",
+    }
+    STAT_CARDS = [
+        (None, "مجموع فعالیت‌ها", "#f5a623"),
+        ("create", "ثبت", "#22c55e"),
+        ("login", "ورود", "#7dd3fc"),
+        ("update", "ویرایش", "#a5b4fc"),
+        ("delete", "حذف", "#ef4444"),
+    ]
 
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
         self._current_page = 1
         self._total_pages = 1
+        self._logs = []
+        self._action_filter = None
 
-        # --- کمبوها (اول همه ساخته می‌شوند) ---
+        # --- کمبوها ---
         self.entity_filter_combo = QComboBox()
         for value, label in self.ENTITY_TYPE_LABELS.items():
             self.entity_filter_combo.addItem(label, value)
@@ -543,32 +590,44 @@ class ActivityLogTab(QWidget):
         self.days_filter_combo.setCurrentIndex(1)
         self.days_filter_combo.currentIndexChanged.connect(self._handle_filter_changed)
 
-        # --- جدول دوستونی ---
-        self.table = QTableWidget()
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["زمان", "کاربر", "عملیات", "زمان", "کاربر", "عملیات"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.table.setColumnWidth(0, 140)
-        self.table.setColumnWidth(1, 130)
-        self.table.setColumnWidth(2, 120)
-        self.table.setColumnWidth(3, 140)
-        self.table.setColumnWidth(4, 130)
-        self.table.setColumnWidth(5, 120)
-        self.table.setStyleSheet("QTableWidget::item { border-right: 1px solid rgba(128,128,140,0.35); }")
-
         refresh_btn = QPushButton("به‌روزرسانی")
         refresh_btn.clicked.connect(self.load_logs)
 
-        # --- نوار فیلتر (بعد از ساخته‌شدن همه) ---
+        title = QLabel("🕘 تاریخچه‌ی فعالیت‌ها")
+        title.setStyleSheet("font-size: 15px; font-weight: 800; color: #f5a623; background: transparent;")
+
         filter_bar = QHBoxLayout()
-        filter_bar.addWidget(QLabel("نوع:"))
-        filter_bar.addWidget(self.entity_filter_combo)
-        filter_bar.addWidget(QLabel("کاربر:"))
-        filter_bar.addWidget(self.user_filter_combo)
-        filter_bar.addWidget(QLabel("بازه:"))
-        filter_bar.addWidget(self.days_filter_combo)
+        filter_bar.addWidget(title)
+        filter_bar.addSpacing(18)
+        filter_bar.addWidget(QLabel("نوع:"));    filter_bar.addWidget(self.entity_filter_combo)
+        filter_bar.addWidget(QLabel("کاربر:"));  filter_bar.addWidget(self.user_filter_combo)
+        filter_bar.addWidget(QLabel("بازه:"));   filter_bar.addWidget(self.days_filter_combo)
         filter_bar.addStretch()
         filter_bar.addWidget(refresh_btn)
+
+        # --- کارت‌های آماری (کلیک = فیلتر همان عملیات) ---
+        self._stat_cards = {}
+        self._action_filter = None
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(10)
+        for key, title_c, color in self.STAT_CARDS:
+            card = _StatCard(title_c, color)
+            card.clicked.connect(lambda k=key: self._toggle_action_filter(k))
+            self._stat_cards[key] = card
+            stats_row.addWidget(card)
+        stats_row.addStretch()
+
+        # --- جدول دوستونی ---
+        self.table = QTableWidget()
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["عملیات", "کاربر", "زمان", "زمان", "کاربر", "عملیات"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setStyleSheet(
+            "QTableWidget::item { border-right: 1px solid rgba(128,128,140,0.35); }"
+            "QTableWidget::item:selected { background: rgba(245,166,35,0.25); }")
 
         self.prev_btn = QPushButton("◀ صفحه‌ی قبل")
         self.prev_btn.clicked.connect(self.handle_prev_page)
@@ -586,19 +645,42 @@ class ActivityLogTab(QWidget):
 
         layout = QVBoxLayout()
         layout.addLayout(filter_bar)
+        layout.addLayout(stats_row)
         layout.addWidget(self.table)
         layout.addLayout(pagination_bar)
         self.setLayout(layout)
 
         self.load_logs()
 
+    # ---------- آمار و فیلتر عملیات ----------
+    def _toggle_action_filter(self, key):
+        self._action_filter = None if self._action_filter == key else key
+        self._refresh_card_selection()
+        self._render()
 
+    def _refresh_card_selection(self):
+        for key, card in self._stat_cards.items():
+            if key == self._action_filter:
+                card.setStyleSheet("QFrame#statCard { border: 1px solid #f5a623; }")
+            else:
+                card.setStyleSheet("")
+
+    def _action_item(self, action):
+        label = self.ACTION_LABELS.get(action, action)
+        color = self.ACTION_COLORS.get(action, "#a5b4fc")
+        it = QTableWidgetItem(f"● {label}")
+        it.setForeground(QColor(color))
+        f = it.font(); f.setBold(True); it.setFont(f)
+        it.setTextAlignment(Qt.AlignCenter)
+        return it
+
+    # ---------- داده ----------
     def _handle_filter_changed(self):
         self._current_page = 1
         self.load_logs()
 
-
     def load_logs(self):
+        TableSpinner.show(self.table)
         try:
             response = api_client.list_activity_logs(
                 page=self._current_page,
@@ -607,31 +689,42 @@ class ActivityLogTab(QWidget):
                 user_id=self.user_filter_combo.currentData(),
             )
         except ApiError as e:
+            TableSpinner.hide(self.table)
             handle_api_error(self, e, "خطا")
             return
+        TableSpinner.hide(self.table)
 
-        logs = response["items"]
+        self._logs = response["items"]
         self._total_pages = response["total_pages"]
 
-        half = math.ceil(len(logs) / 2)
-        right = logs[:half]        # ستون اول (راست در RTL)
-        left = logs[half:]         # ستون دوم — ادامه‌ی شماره‌ها (۴،۵،...)
+        # کارت‌ها: مجموع واقعی سرور + شمارش عملیاتِ همین صفحه
+        from collections import Counter
+        counts = Counter(l["action"] for l in self._logs)
+        for key, card in self._stat_cards.items():
+            card.value_label.setText(
+                str(response["total"]) if key is None else str(counts.get(key, 0)))
+
+        self._render()
+
+    def _render(self):
+        rows = [l for l in self._logs
+                if not self._action_filter or l["action"] == self._action_filter]
+        half = math.ceil(len(rows) / 2)
+        right, left = rows[:half], rows[half:]
         pairs = max(len(right), len(left))
         self.table.setRowCount(pairs)
         for r, log in enumerate(right):
-            self.table.setItem(r, 0, QTableWidgetItem((log["created_at"] or "")[:16].replace("T", " ")))
+            self.table.setItem(r, 0, self._action_item(log["action"]))
             self.table.setItem(r, 1, QTableWidgetItem(log.get("user_full_name") or log.get("username") or ""))
-            self.table.setItem(r, 2, QTableWidgetItem(self.ACTION_LABELS.get(log["action"], log["action"])))
-        for r, log in enumerate(left):
+            self.table.setItem(r, 2, QTableWidgetItem((log["created_at"] or "")[:16].replace("T", " ")))
+        for i, log in enumerate(left):
+            r = i
             self.table.setItem(r, 3, QTableWidgetItem((log["created_at"] or "")[:16].replace("T", " ")))
             self.table.setItem(r, 4, QTableWidgetItem(log.get("user_full_name") or log.get("username") or ""))
-            self.table.setItem(r, 5, QTableWidgetItem(self.ACTION_LABELS.get(log["action"], log["action"])))
+            self.table.setItem(r, 5, self._action_item(log["action"]))
         self.status_label.setText(
-            f"صفحه {self._current_page} از {self._total_pages} — تعداد کل: {response['total']}"
-        )
-        self.prev_btn.setEnabled(self._current_page > 1)
-        self.next_btn.setEnabled(self._current_page < self._total_pages)
-
+            f"صفحه {self._current_page} از {self._total_pages}"
+            + (f" — فیلتر: {self.ACTION_LABELS.get(self._action_filter)}" if self._action_filter else ""))
 
     def handle_prev_page(self):
         if self._current_page > 1:
@@ -642,7 +735,6 @@ class ActivityLogTab(QWidget):
         if self._current_page < self._total_pages:
             self._current_page += 1
             self.load_logs()
-
 
 
 class MainWindow(QMainWindow):
