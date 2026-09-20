@@ -1,13 +1,10 @@
-from PySide6.QtCore import Qt
-
+from PySide6.QtCore import Qt, QTimer, QEvent
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QPushButton,
     QCheckBox, QMessageBox, QFrame, QSizePolicy, QGraphicsDropShadowEffect,
     QGridLayout, QApplication, QToolButton,
 )
 from PySide6.QtGui import QColor
-from PySide6.QtCore import QPropertyAnimation, QEasingCurve
-from PySide6.QtWidgets import QToolButton
 from api_client import api_client, ApiError
 import settings_manager
 
@@ -45,7 +42,7 @@ WINDOW_QSS = """
 QLineEdit {
     background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.13);
-    border-radius: 10px; padding: 10px 14px;
+    border-radius: 10px; padding: 10px 40px 10px 14px;
     color: #eceaf4; selection-background-color: #f5a623;
 }
 QLineEdit:focus { border: 1px solid #f5a623; background: rgba(245,166,35,0.07); }
@@ -71,7 +68,6 @@ QCheckBox { color: rgba(236,234,244,0.7); font-size: 11px; background: transpare
     border-radius: 12px;
     padding: 10px 14px;
 }
-
 """
 
 FEATURES = [
@@ -83,6 +79,7 @@ FEATURES = [
     ("✅", "پیگیری‌ها", "یادآوری هوشمند"),
     ("🗺", "نقشه", "موقعیت هر فایل"),
     ("📄", "PDF و اکسل", "قرارداد و گزارش"),
+    ("🔔", "اطلاع‌یه‌ها", "هوشمند و به‌موقع"),
 ]
 
 
@@ -92,29 +89,20 @@ class LoginWindow(QWidget):
         self.on_success = on_success
         self.setWindowTitle("ورود به ملک‌یار")
         self.setMinimumSize(940, 580)
-        self.resize(1000, 620)
+        self.resize(1080, 660)
         self.setStyleSheet(WINDOW_QSS)
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-        root.setObjectName("loginRoot")
         self.setObjectName("loginRoot")
 
         # ---------- پنل برندینگ (سمت راست در RTL) ----------
         brand = QWidget()
         brand.setObjectName("brandPanel")
-        brand.setFixedWidth(470)
+        brand.setFixedWidth(560)
         bl = QVBoxLayout(brand)
-        bl.setContentsMargins(48, 40, 48, 40)
-        bl.addStretch(1)
-
-        more = QLabel("✚ و ده‌ها قابلیت دیگر: بایگانی هوشمند، بکاپ خودکار، خروجی PDF، حسابداری مشارکتی…")
-        more.setObjectName("brandMore")
-        more.setAlignment(Qt.AlignCenter)
-        more.setWordWrap(True)
-        bl.addWidget(more)
-
+        bl.setContentsMargins(48, 36, 48, 32)
 
         logo = QLabel("🏠")
         logo.setObjectName("brandLogo")
@@ -131,23 +119,32 @@ class LoginWindow(QWidget):
         tag.setObjectName("brandTag")
         tag.setAlignment(Qt.AlignCenter)
         bl.addWidget(tag)
-        bl.addSpacing(28)
+        bl.addSpacing(22)
 
         grid = QGridLayout()
-        grid.setSpacing(12)
+        grid.setSpacing(10)
         for i, (icon, title, sub) in enumerate(FEATURES):
             card = QFrame()
             card.setObjectName("featureCard")
-            card.setFixedSize(160, 84)
+            card.setFixedSize(150, 84)
             cv = QVBoxLayout(card)
-            cv.setContentsMargins(10, 10, 10, 10)
+            cv.setContentsMargins(8, 8, 8, 8)
+            cv.setSpacing(2)
             ic = QLabel(icon); ic.setObjectName("featureIcon"); ic.setAlignment(Qt.AlignCenter)
             tt = QLabel(title); tt.setObjectName("featureTitle"); tt.setAlignment(Qt.AlignCenter)
             ss = QLabel(sub);   ss.setObjectName("featureSub");   ss.setAlignment(Qt.AlignCenter)
             cv.addWidget(ic); cv.addWidget(tt); cv.addWidget(ss)
-            grid.addWidget(card, i // 2, i % 2, Qt.AlignHCenter)
+            grid.addWidget(card, i // 3, i % 3, Qt.AlignHCenter)
         bl.addLayout(grid)
-        bl.addStretch(2)
+        bl.addSpacing(14)
+
+        # چیپ «و خیلی بیشتر» — زیر گرید
+        more = QLabel("✚ و ده‌ها قابلیت دیگر — لیست کامل در خود برنامه")
+        more.setObjectName("brandMore")
+        more.setAlignment(Qt.AlignCenter)
+        more.setWordWrap(True)
+        bl.addWidget(more)
+        bl.addStretch(1)
 
         # ---------- کارت ورود (سمت چپ) ----------
         card_wrap = QWidget()
@@ -182,7 +179,8 @@ class LoginWindow(QWidget):
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.returnPressed.connect(self.handle_login)
         cv.addWidget(self.password_input)
-        self._reposition_pw_btn()
+
+        # دکمهٔ چشم — بعد از اضافه‌شدن فیلد به layout ساخته می‌شود
         self.toggle_pw_btn = QToolButton(self.password_input)
         self.toggle_pw_btn.setText("👁")
         self.toggle_pw_btn.setCursor(Qt.PointingHandCursor)
@@ -190,11 +188,10 @@ class LoginWindow(QWidget):
             "QToolButton { border: none; background: transparent; padding: 0 8px; }"
             "QToolButton:hover { color: #f5a623; }")
         self.toggle_pw_btn.setCheckable(True)
-        self.toggle_pw_btn.setFixedHeight(self.password_input.height())
-        self.toggle_pw_btn.move(
-            self.password_input.width() - 34,
-            (self.password_input.height() - self.toggle_pw_btn.height()) // 2)
+        self.toggle_pw_btn.setFixedSize(30, 26)
         self.toggle_pw_btn.toggled.connect(self._toggle_password)
+        self.password_input.installEventFilter(self)
+        QTimer.singleShot(50, self._reposition_pw_btn)
 
         self.remember_check = QCheckBox("مرا به خاطر بسپار")
         if settings_manager.get_saved_username():
@@ -229,19 +226,10 @@ class LoginWindow(QWidget):
         root.addWidget(brand)
 
         self.username_input.setFocus()
-        if settings_manager.get_saved_username() and settings_manager.load_settings().get("saved_password"):
-            self.password_input.setText(settings_manager.load_settings().get("saved_password") or "")
 
-
-        self._reposition_pw_btn()
     # ---------- helpers ----------
     def _label(self, text):
         l = QLabel(text); l.setObjectName("fieldLabel"); return l
-
-    def _open_connection_settings(self):
-        from ui.connection_settings_dialog import ConnectionSettingsDialog
-        ConnectionSettingsDialog(self).exec()
-
 
     def _reposition_pw_btn(self):
         b = self.toggle_pw_btn
@@ -250,7 +238,6 @@ class LoginWindow(QWidget):
         b.raise_()
 
     def eventFilter(self, obj, event):
-        from PySide6.QtCore import QEvent
         if obj is self.password_input and event.type() == QEvent.Resize:
             self._reposition_pw_btn()
         return super().eventFilter(obj, event)
@@ -260,6 +247,9 @@ class LoginWindow(QWidget):
             QLineEdit.Normal if show else QLineEdit.Password)
         self.toggle_pw_btn.setText("🙈" if show else "👁")
 
+    def _open_connection_settings(self):
+        from ui.connection_settings_dialog import ConnectionSettingsDialog
+        ConnectionSettingsDialog(self).exec()
 
     def handle_login(self):
         username = self.username_input.text().strip()
@@ -277,13 +267,12 @@ class LoginWindow(QWidget):
             self.login_btn.setEnabled(True)
             self.login_btn.setText("ورود")
             return
-        except Exception as e:
+        except Exception:
             self._show_error("اتصال به سرور برقرار نشد — تنظیمات اتصال را چک کنید.")
             self.login_btn.setEnabled(True)
             self.login_btn.setText("ورود")
             return
 
-        # ذخیرهٔ اعتبار در صورت تیک (نکته: روی دیسک محلی است — فقط دفتر معتمد)
         if self.remember_check.isChecked():
             settings_manager.set_saved_username(username)
             s = settings_manager.load_settings()

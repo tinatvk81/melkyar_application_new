@@ -22,7 +22,11 @@ from PySide6.QtCore import Qt
 
 from PySide6.QtWidgets import QApplication, QDialog, QDockWidget
 from PySide6.QtGui import QScreen
-
+# ویندوز: جداکردن هویت تسک‌بار از python.exe تا آیکون برنامه نشان داده شود
+if sys.platform == "win32":
+    import ctypes
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("melkyar.app.1")
+    
 _orig_dialog_init = QDialog.__init__
 
 def _patched_init(self, *a, **kw):
