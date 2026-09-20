@@ -4,6 +4,8 @@ os.environ.setdefault("QSG_RHI_BACKEND", "software")
 os.environ.setdefault("QT_OPENGL", "software")
 os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
 
+from PySide6.QtGui import QIcon
+from resource_path import resource_path
 import sys
 # ... بقیه‌ی importهای فعلی main.py
 from PySide6.QtWidgets import QMessageBox
@@ -40,6 +42,7 @@ def _limit_main_window(win):
 
 def main():
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(resource_path("resources", "icons", "melkyar.ico")))
     apply_persian_rtl_style(app, mode=settings_manager.get_theme())
 
     window_holder = {}
