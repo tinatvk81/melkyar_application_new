@@ -4,9 +4,16 @@ os.environ.setdefault("QSG_RHI_BACKEND", "software")
 os.environ.setdefault("QT_OPENGL", "software")
 os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
 
+import sys
+import ctypes
+if sys.platform == "win32":
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("melkyar.app.1")
+    except Exception:
+        pass
+
 from PySide6.QtGui import QIcon
 from resource_path import resource_path
-import sys
 # ... بقیه‌ی importهای فعلی main.py
 from PySide6.QtWidgets import QMessageBox
 
@@ -26,7 +33,7 @@ from PySide6.QtGui import QScreen
 if sys.platform == "win32":
     import ctypes
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("melkyar.app.1")
-    
+
 _orig_dialog_init = QDialog.__init__
 
 def _patched_init(self, *a, **kw):
