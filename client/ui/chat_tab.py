@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QFormLayout, QTextEdit, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QApplication,
 )
-
+from ui.jalali_util import to_jalali_str
 from api_client import api_client, ApiError
 from session import handle_api_error
 import settings_manager
@@ -187,14 +187,13 @@ class FaqDialog(QDialog):
             return
         self._reload()
 
-
 class ChatTab(QWidget):
-    """گفت‌وگو: ربات پاسخ‌گو (اولین مخاطب) + چت آزاد بین همهٔ کاربران."""
+    """گفت‌وگو: ربات (کارت سنجاق‌شده) + چت آزاد بین کاربران + جداکنندهٔ تاریخ."""
 
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
-        self.current_peer = None   # None = ربات
+        self.current_peer = None
         self._contacts = []
         self._auto_timer = QTimer(self)
         self._auto_timer.timeout.connect(self._refresh_if_open)
@@ -203,26 +202,53 @@ class ChatTab(QWidget):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
 
-        # --- ستون مخاطبان (ربات = آیتم اول) ---
+        # ================= ستون مخاطبان =================
         left = QVBoxLayout()
-        row = QHBoxLayout()
-        row.addWidget(QLabel("مخاطبان"))
-        row.addStretch()
+        head = QHBoxLayout()
+        head.addWidget(QLabel("مخاطبان"))
+        head.addStretch()
         if api_client.role == "admin":
-            faq_btn = QPushButton("⚙️ سؤالات ربات")
+            faq_btn = QPushButton("⚙️")
             faq_btn.setObjectName("chip")
-            faq_btn.setToolTip("مدیریت سؤالات و پاسخ‌های خودکار")
+            faq_btn.setToolTip("سؤالات متداول چت‌بات")
             faq_btn.clicked.connect(lambda: FaqDialog().exec())
-            row.addWidget(faq_btn)
-        left.addLayout(row)
+            head.addWidget(faq_btn)
+        left.addLayout(head)
 
+        # --- کارت سنجاق‌شدهٔ ربات ---
+        self._bot_card = QFrame()
+        self._bot_card.setObjectName("botCard")
+        self._bot_card.setFixedHeight(58)
+        self._bot_card.setCursor(Qt.PointingHandCursor)
+        bl = QHBoxLayout(self._bot_card)
+        bl.setContentsMargins(10, 6, 10, 6)
+        bot_av = QLabel("🤖")
+        bot_av.setFixedSize(34, 34)
+        bot_av.setAlignment(Qt.AlignCenter)
+        bot_av.setStyleSheet("background: rgba(245,166,35,0.18); border-radius: 17px; font-size: 17px;")
+        bl.addWidget(bot_av)
+        btxt = QVBoxLayout(); btxt.setSpacing(0)
+        b1 = QLabel("چت‌بات ملک‌یار"); b1.setStyleSheet("font-weight: bold; color: #f5a623; background: transparent;")
+        b2 = QLabel("پاسخ خودکار"); b2.setStyleSheet("font-size: 10px; color: rgba(236,234,244,0.55); background: transparent;")
+        btxt.addWidget(b1); btxt.addWidget(b2)
+        bl.addLayout(btxt, 1)
+        self._bot_card.mousePressEvent = lambda e: self._select_bot()
+        left.addWidget(self._bot_card)
+
+        # --- جستجوی مخاطب ---
+        self.contact_search = QLineEdit()
+        self.contact_search.setPlaceholderText("🔍 جستجوی مخاطب…")
+        self.contact_search.textChanged.connect(self._filter_contacts)
+        left.addWidget(self.contact_search)
+
+        # --- لیست مخاطبان (فقط انسان‌ها) ---
         self.contacts_list = QListWidget()
-        self.contacts_list.setFixedWidth(max(200, int(200 * settings_manager.get_font_size() / 13)))
+        self.contacts_list.setFixedWidth(max(210, int(210 * settings_manager.get_font_size() / 13)))
         self.contacts_list.currentRowChanged.connect(self._select_peer)
         left.addWidget(self.contacts_list, 1)
         lay.addLayout(left)
 
-        # --- ستون گفت‌وگو ---
+        # ================= ستون گفت‌وگو =================
         right = QVBoxLayout()
         self.peer_label = QLabel("🤖 چت‌بات ملک‌یار — سؤالت را بپرس")
         self.peer_label.setStyleSheet("font-weight: bold; color: #f5a623; background: transparent;")
@@ -238,55 +264,102 @@ class ChatTab(QWidget):
         self.scroll.setWidget(self.bubbles_holder)
         right.addWidget(self.scroll, 1)
 
-        # چیپ‌های پیشنهادی + دکمه‌های اندازه فونت (فقط وقتی ربات انتخاب است)
         chips_row = QHBoxLayout()
         for q in ["امکانات برنامه چیست؟", "چطور فایل ثبت کنم؟", "رمزم را فراموش کردم"]:
-            b = QPushButton(q)
-            b.setObjectName("chip")
+            b = QPushButton(q); b.setObjectName("chip")
             b.clicked.connect(lambda _=False, t=q: self._send_bot(t))
             chips_row.addWidget(b)
         chips_row.addWidget(QLabel("|"))
-        font_dn = QPushButton("A−")
-        font_dn.setObjectName("chip")
-        font_dn.setFixedWidth(38)
-        font_up = QPushButton("A+")
-        font_up.setObjectName("chip")
-        font_up.setFixedWidth(38)
+        font_dn = QPushButton("A−"); font_dn.setObjectName("chip"); font_dn.setFixedWidth(38)
+        font_up = QPushButton("A+"); font_up.setObjectName("chip"); font_up.setFixedWidth(38)
         font_dn.clicked.connect(lambda: self._change_font(-1))
         font_up.clicked.connect(lambda: self._change_font(1))
-        chips_row.addWidget(font_dn)
-        chips_row.addWidget(font_up)
+        chips_row.addWidget(font_dn); chips_row.addWidget(font_up)
         chips_row.addStretch()
-        self.chips_widget = QWidget()
-        self.chips_widget.setLayout(chips_row)
+        self.chips_widget = QWidget(); self.chips_widget.setLayout(chips_row)
         right.addWidget(self.chips_widget)
 
-        # --- نوار ورودی پیام ---
         input_row = QHBoxLayout()
         self.msg_input = QLineEdit()
         self.msg_input.setPlaceholderText("پیام خود را بنویسید و Enter بزنید…")
         self.msg_input.returnPressed.connect(self._on_enter)
-        send_btn = QPushButton("ارسال")
-        send_btn.setObjectName("primary")
+        send_btn = QPushButton("ارسال ➤"); send_btn.setObjectName("primary")
         send_btn.clicked.connect(self._on_enter)
-        self.msg_input.textChanged.connect(self._on_typing_hint)
         input_row.addWidget(self.msg_input, 1)
         input_row.addWidget(send_btn)
         right.addLayout(input_row)
-
         lay.addLayout(right, 1)
+
         self.load_contacts()
+        self._select_bot()
+
+    # ---------- انتخاب ----------
+    def _select_bot(self):
+        self.current_peer = None
+        self._highlight_bot(True)
+        self.contacts_list.setCurrentRow(-1)
+        self.peer_label.setText("🤖 چت‌بات ملک‌یار — سؤالت را بپرس")
+        self.chips_widget.setVisible(True)
         self._load_bot_greeting()
 
+    def _select_peer(self, row):
+        if row < 0:
+            return
+        self._highlight_bot(False)
+        idx = row
+        if not (0 <= idx < len(self._visible_contacts)):
+            return
+        self.current_peer = self._visible_contacts[idx]
+        self.peer_label.setText(f"گفت‌وگو با: {self.current_peer['full_name']}")
+        self.chips_widget.setVisible(False)
+        self.load_conversation()
 
-    def _on_typing_hint(self):
-        # نمایش محلیِ "در حال تایپ" برای طرف مقابل هنوز سمت سرور پیاده نشده؛
-        # این فقط placeholder زنده است:
-        if self.msg_input.text():
-            self.peer_label.setText(self.peer_label.text().rstrip("…") + " …")
-        # برگشت متن اصلی در ارسال/رفرش انجام می‌شود
+    def _highlight_bot(self, on: bool):
+        self._bot_card.setStyleSheet(
+            "QFrame#botCard { background: rgba(245,166,35,0.14);"
+            " border: 1px solid rgba(245,166,35,0.55); border-radius: 12px; }"
+            if on else
+            "QFrame#botCard { background: rgba(255,255,255,0.05);"
+            " border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; }")
 
-        
+    # ---------- مخاطبان ----------
+    _PALETTE = ["#f5a623", "#7dd3fc", "#86efac", "#c4b5fd", "#fca5a5", "#2dd4bf"]
+
+    def load_contacts(self):
+        try:
+            rows = api_client.chat_contacts()
+        except ApiError as e:
+            handle_api_error(self, e, "خطا")
+            return
+        self._contacts = rows
+        self._filter_contacts(self.contact_search.text())
+
+    def _filter_contacts(self, term: str = ""):
+        term = (term or "").strip().lower()
+        self.contacts_list.blockSignals(True)
+        self.contacts_list.clear()
+        self._visible_contacts = []
+        for c in self._contacts:
+            if term and term not in c["full_name"].lower():
+                continue
+            self._visible_contacts.append(c)
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, c["id"])
+            self.contacts_list.addItem(item)
+            w = QWidget()
+            h = QHBoxLayout(w); h.setContentsMargins(6, 4, 6, 4)
+            av = QLabel((c["full_name"] or "?")[:1].upper())
+            color = self._PALETTE[(len(c["full_name"])) % len(self._PALETTE)]
+            av.setFixedSize(30, 30); av.setAlignment(Qt.AlignCenter)
+            av.setStyleSheet(f"background: {color}; color: #241300;"
+                             "border-radius: 15px; font-weight: bold;")
+            h.addWidget(av)
+            nm = QLabel(c["full_name"])
+            nm.setStyleSheet("background: transparent;")
+            h.addWidget(nm, 1)
+            self.contacts_list.setItemWidget(item, w)
+        self.contacts_list.blockSignals(False)
+
     def _change_font(self, delta: int):
         app = QApplication.instance()
         cur = getattr(app, "chat_font_delta", 0)
@@ -301,39 +374,10 @@ class ChatTab(QWidget):
         self._clear_bubbles()
         self._add_bubble("سلام! 👋 من چت‌بات ملک‌یارم.\n"
                          "سؤالت را بنویس یا از دکمه‌های پایین استفاده کن.\n"
-                         "برای گفت‌وگو با همکارانت، از لیست مخاطبان انتخابش کن.", mine=False, name="چت‌بات")
+                         "برای گفت‌وگو با همکارانت، از لیست مخاطبان انتخابش کن.",
+                         mine=False, name="چت‌بات")
 
-    # ---------- مخاطبان ----------
-    def load_contacts(self):
-        try:
-            rows = api_client.chat_contacts()
-        except ApiError as e:
-            handle_api_error(self, e, "خطا")
-            return
-        self.contacts_list.blockSignals(True)
-        self.contacts_list.clear()
-        self._contacts = rows
-        self.contacts_list.addItem(QListWidgetItem("🤖 چت‌بات (پاسخ خودکار)"))
-        for c in rows:
-            self.contacts_list.addItem(QListWidgetItem(f"👤 {c['full_name']}"))
-        self.contacts_list.setCurrentRow(0)
-        self.contacts_list.blockSignals(False)
-
-    def _select_peer(self, row):
-        if row == 0:
-            self.current_peer = None
-            self.peer_label.setText("🤖 چت‌بات ملک‌یار — سؤالت را بپرس")
-            self.chips_widget.setVisible(True)
-            self._load_bot_greeting()
-            return
-        idx = row - 1
-        if not (0 <= idx < len(self._contacts)):
-            return
-        self.current_peer = self._contacts[idx]
-        self.peer_label.setText(f"گفت‌وگو با: {self.current_peer['full_name']}")
-        self.chips_widget.setVisible(False)
-        self.load_conversation()
-
+    # ---------- حذف/اضافهٔ حباب ----------
     def _clear_bubbles(self):
         while self.bubbles_lay.count() > 1:
             it = self.bubbles_lay.takeAt(0)
@@ -354,7 +398,19 @@ class ChatTab(QWidget):
         self._clear_bubbles()
         my_id = getattr(api_client, "user_id", None)
         names = {c["id"]: c["full_name"] for c in self._contacts}
+        prev_date = None
+        from datetime import date as _date
+        today = _date.today().isoformat()
         for m in rows:
+            day = (m.get("created_at") or "")[:10]
+            if day and day != prev_date:
+                label = "— امروز —" if day == today else f"— {to_jalali_str(day)} —"
+                sep = QLabel(label)
+                sep.setAlignment(Qt.AlignCenter)
+                sep.setStyleSheet("color: rgba(236,234,244,0.45); font-size: 10px;"
+                                  "background: transparent; padding: 4px;")
+                self.bubbles_lay.insertWidget(self.bubbles_lay.count() - 1, sep)
+                prev_date = day
             mine = (m["sender_id"] == my_id)
             who = "" if mine else names.get(m["sender_id"], "—")
             b = Bubble(m["body"], mine, (m.get("created_at") or "")[:16].replace("T", " "), who)

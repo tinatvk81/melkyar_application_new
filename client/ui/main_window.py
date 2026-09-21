@@ -823,6 +823,23 @@ class MainWindow(QMainWindow):
         side_lay.addWidget(self._settings_btn)
         side_lay.addWidget(self._sidebar, 1)
 
+
+        foot = QFrame()
+        foot.setObjectName("sideFooter")
+        fl = QHBoxLayout(foot)
+        fl.setContentsMargins(10, 8, 10, 8)
+        _pal = ["#f5a623", "#7dd3fc", "#86efac", "#c4b5fd"]
+        _col = _pal[(len(api_client.full_name or "x")) % 4]
+        av = QLabel((api_client.full_name or "?")[:1].upper())
+        av.setFixedSize(32, 32); av.setAlignment(Qt.AlignCenter)
+        av.setStyleSheet(f"background: {_col}; color: #241300; border-radius: 16px; font-weight: bold;")
+        fl.addWidget(av)
+        nm = QLabel(f"{api_client.full_name}\n{'مدیر سیستم' if api_client.role == 'admin' else 'مشاور'}")
+        nm.setStyleSheet("color: #eceaf4; font-size: 11px; background: transparent;")
+        fl.addWidget(nm, 1)
+        side_lay.addWidget(foot)
+
+        
         central = QWidget()
         lay = QHBoxLayout(central)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -857,7 +874,7 @@ class MainWindow(QMainWindow):
             self._stack.insertWidget(row, real)
         self._stack.setCurrentIndex(row)
 
-        
+
     def _open_global_search(self):
         GlobalSearchDialog(self).exec()
 
