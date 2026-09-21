@@ -787,20 +787,31 @@ class MainWindow(QMainWindow):
         ]
         if api_client.role == "admin":
             pages += [
-                ("👥  مشاوران و مدیریت", AgentCenterTab(), "agents"),
-                ("💰  حسابداری پورسانت", DealsTab(), "deals"),
-                ("🕘  تاریخچه‌ی فعالیت‌ها", ActivityLogTab(), "activity"),
+                ("👥  مشاوران و مدیریت", None, "agents"),      # lazy
+                ("💰  حسابداری پورسانت", None, "deals"),       # lazy
+                ("🕘  تاریخچه‌ی فعالیت‌ها", None, "activity"),  # lazy
             ]
         else:
-            # مشاور به حسابداری دسترسی ندارد — دفتر خودش را در «حساب من» می‌بیند
-            pages.append(("💰  حساب من", MyLedgerTab(), "myledger"))
+            pages.append(("💰  حساب من", None, "myledger"))     # lazy
+
+        self._lazy_makers = {
+            "agents": lambda: AgentCenterTab(),
+            "deals": lambda: DealsTab(),
+            "activity": lambda: ActivityLogTab(),
+            "myledger": lambda: MyLedgerTab(),
+        }
 
         for label, widget, key in pages:
+            if widget is None:
+                # جای‌نگهدار سبک — واقعی با اولین باز شدن ساخته می‌شود
+                widget = QWidget()
             self._stack.addWidget(widget)
             self._sidebar.addItem(label)
             self._index[key] = self._sidebar.count() - 1
+            self._page_keys = getattr(self, "_page_keys", {})
+            self._page_keys[self._stack.count() - 1] = key
 
-        self._sidebar.currentRowChanged.connect(self._stack.setCurrentIndex)
+        self._sidebar.currentRowChanged.connect(self._on_sidebar_change)
         self._sidebar.setCurrentRow(self._index["dashboard"])
         self._renewals_tab_index = self._index["renewals"]  # سازگاری با main.py
 
@@ -834,7 +845,19 @@ class MainWindow(QMainWindow):
         self._bot_fab.setCursor(Qt.PointingHandCursor)
         self._bot_fab.setToolTip("کاتدر فروش هل — سؤال بپرس")
 
+    def _on_sidebar_change(self, row):
+        key = self._page_keys.get(row)
+        w = self._stack.widget(row)
+        # اگر جای‌نگهدار خالی است، تب واقعی را بساز و جایگزین کن
+        if key in self._lazy_makers and w is not None and w.metaObject().className() == "QWidget":
+            real = self._lazy_makers[key]()
+            old = self._stack.widget(row)
+            self._stack.removeWidget(old)
+            old.deleteLater()
+            self._stack.insertWidget(row, real)
+        self._stack.setCurrentIndex(row)
 
+        
     def _open_global_search(self):
         GlobalSearchDialog(self).exec()
 
