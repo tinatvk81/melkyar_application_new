@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QMessageBox, QDialog, QFormLayout, QLineEdit, QTextEdit,
     QFileDialog, QHeaderView,
 )
+from PySide6.QtWidgets import QLineEdit
 from ui.spinner import TableSpinner
 from PySide6.QtWidgets import QTabWidget  
 from PySide6.QtGui import QColor
@@ -20,6 +21,28 @@ DEAL_STATUS_LABELS = {"pending": "در جریان", "finalized": "قطعی", "ca
 
 def _money(v):
     return f"{int(v or 0):,}"
+
+_AVATAR_COLORS = ["#f5a623", "#7dd3fc", "#86efac", "#c4b5fd", "#fca5a5", "#2dd4bf", "#fdba74"]
+
+def _avatar_item(name: str) -> QTableWidgetItem:
+    """آواتار متنی: حرف اول نام داخل دایرهٔ رنگی + نام کنارش."""
+    letter = (name or "?").strip()[:1].upper() or "?"
+    color = _AVATAR_COLORS[(len(name or "x")) % len(_AVATAR_COLORS)]
+    it = QTableWidgetItem(f"{letter}  {name}")
+    it.setForeground(QColor(color))
+    f = it.font(); f.setBold(True); it.setFont(f)
+    it.setTextAlignment(Qt.AlignVCenter | Qt.AlignRight)
+    return it
+
+
+def _percent_item(percent: float) -> QTableWidgetItem:
+    """بج درصد + نوار کوچک پیشرفت (متن نسبت به ۱۰۰)."""
+    pct = max(0, min(int(percent), 100))
+    bar = "▓" * (pct // 10) + "░" * (10 - pct // 10)
+    it = QTableWidgetItem(f"{percent:g}%  {bar}")
+    color = "#22c55e" if pct >= 40 else "#f5a623" if pct >= 20 else "#7dd3fc"
+    it.setForeground(QColor(color))
+    return it
 
 
 class DealEditDialog(QDialog):
@@ -480,7 +503,10 @@ class DealsTab(QWidget):
         add_deal_btn = QPushButton("ثبت معامله جدید (قولنامه)")
         add_deal_btn.setObjectName("primary")
         add_deal_btn.clicked.connect(self._add_deal)
-
+        self.search_deals_input = QLineEdit()
+        self.search_deals_input.setPlaceholderText("🔍 جستجو در معامله‌ها (مشاور، مبلغ، فایل…)")
+        self.search_deals_input.setFixedWidth(260)
+        self.search_deals_input.textChanged.connect(self.load_deals)
         top = QHBoxLayout()
         top.addWidget(QLabel("مشاور:")); top.addWidget(self.agent_filter)
         top.addWidget(QLabel("وضعیت:")); top.addWidget(self.status_filter)
@@ -488,6 +514,9 @@ class DealsTab(QWidget):
 
         top.addStretch()
         top.addWidget(add_deal_btn); top.addWidget(refresh_btn)
+
+        top.addSpacing(12)
+        top.addWidget(self.search_deals_input)
 
         self.table = QTableWidget()
         self.table.setColumnCount(10)
@@ -719,20 +748,31 @@ class DealsTab(QWidget):
                 cd = d.get("contract_date") or (d.get("created_at") or "")[:10]
                 return bool(cd) and cd >= cutoff.isoformat()
             deals = [d for d in deals if _in_range(d)]
+        # جستجوی زندهٔ سمت کلاینت
+        q = self.search_deals_input.text().strip().lower()
+        if q:
+            def _match(d):
+                agent = self._agent_map.get(d["agent_id"], {})
+                hay = (agent.get("full_name", "") + f"#{d['property_id']}"
+                       + f"{_money(d['deal_amount'])}" + (d.get("notes") or "")).lower()
+                return q in hay
+            deals = [d for d in deals if _match(d)]
+
 
         self._deals_by_row = deals
         self.table.setRowCount(len(deals))
         for r, d in enumerate(deals):
             agent = self._agent_map.get(d["agent_id"], {})
-            self.table.setItem(r, 0, QTableWidgetItem(str(d["id"])))
-            name = agent.get("full_name") or ""
+            name = agent.get("full_name") or "—"
             if d.get("agent2_id"):
                 a2 = self._agent_map.get(d["agent2_id"], {})
                 name += f" 🤝 {a2.get('full_name') or '#'+str(d['agent2_id'])}"
-            self.table.setItem(r, 1, QTableWidgetItem(name))
+            self.table.setItem(r, 0, QTableWidgetItem(str(d["id"])))
+            self.table.setItem(r, 1, _avatar_item(name))
+            # self.table.setItem(r, 1, QTableWidgetItem(agent.get("full_name") or ""))
             self.table.setItem(r, 2, QTableWidgetItem(f"#{d['property_id']}"))
             self.table.setItem(r, 3, QTableWidgetItem(_money(d["deal_amount"])))
-            self.table.setItem(r, 4, QTableWidgetItem(f"{d['commission_percent']:g}٪"))
+            self.table.setItem(r, 4, _percent_item(float(d["commission_percent"])))
             self.table.setItem(r, 5, QTableWidgetItem(_money(d["commission_amount"])))
             self.table.setItem(r, 6, QTableWidgetItem(_money(d["paid_total"])))
             self.table.setItem(r, 7, QTableWidgetItem(_money(d["remaining"])))
@@ -761,7 +801,7 @@ class DealsTab(QWidget):
             return
         self.bal_table.setRowCount(len(rows))
         for r, b in enumerate(rows):
-            self.bal_table.setItem(r, 0, QTableWidgetItem(b["full_name"]))
+            self.bal_table.setItem(r, 0, _avatar_item(b["full_name"]))
             self.bal_table.setItem(r, 1, QTableWidgetItem(_money(b["earned"])))
             self.bal_table.setItem(r, 2, QTableWidgetItem(_money(b["paid"])))
             self.bal_table.setItem(r, 3, QTableWidgetItem(_money(b["remaining"])))
