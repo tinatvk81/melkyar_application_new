@@ -3,6 +3,7 @@ import sys
 from logging.config import fileConfig
 from app.models import user,chat_message,bot_faq, property, property_image, activity_log, deal, client_request, follow_up, notification  # noqa: F401
 from sqlalchemy import engine_from_config
+from app.models import property_favorite, filter_preset  # noqa: F401
 from sqlalchemy import pool
 from alembic import context
 

@@ -237,12 +237,17 @@ class PropertyListTab(QWidget):
             self.card_view.load(**self._current_filters)
 
 
-
     def _handle_clear_filters(self):
+        # چیپ‌های فعالِ نوار ابزار هم باید بصری خاموش شوند، نه فقط فیلتر
+        for chip in (self.urgent_filter_btn, self.fav_filter_btn):
+            chip.blockSignals(True)
+            chip.setChecked(False)
+            chip.blockSignals(False)
         self._current_filters = {}
         self._current_page = 1
         self.load_properties()
         if self.card_view.isVisible(): self.card_view.load(**self._current_filters)
+
 
     def handle_prev_page(self):
         if self._current_page > 1:
@@ -496,7 +501,7 @@ class PropertyListTab(QWidget):
         if not save_path:
             return
         try:
-            api_client.export_properties_pdf(save_path, **self._current_filters)
+            api_client.export_properties_pdf(save_path, **{k: v for k, v in self._current_filters.items() if k != "favorites_only"})
         except ApiError as e:
             handle_api_error(self, e, "خطا")
             return
@@ -509,7 +514,7 @@ class PropertyListTab(QWidget):
         if not save_path:
             return
         try:
-            api_client.export_properties_excel(save_path, **self._current_filters)
+            api_client.export_properties_excel(save_path, **{k: v for k, v in self._current_filters.items() if k != "favorites_only"})
         except ApiError as e:
             handle_api_error(self, e, "خطا")
             return
@@ -968,23 +973,34 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"سامانه‌ی مدیریت فایل‌های ملکی — {api_client.full_name}")
         self.resize(1150, 720)
 
-        # --- زنگ اطلاع‌یه (بالای سایدبار) ---
-        self._bell_btn = QPushButton("🔔 اطلاع‌یه‌ها")
-        self._bell_btn.setObjectName("bellLabel")
+        # --- سه دکمهٔ آیکونی کنار هم: اطلاع‌یه / تم / تنظیمات ---
+        self._bell_btn = QPushButton("🔔")
+        self._bell_btn.setObjectName("iconBtn")
+        self._bell_btn.setFixedSize(48, 36)
+        self._bell_btn.setToolTip("اطلاع‌یه‌ها")
         self._bell_btn.setCursor(Qt.PointingHandCursor)
         self._bell_btn.clicked.connect(self._open_notifications)
 
-        # --- دکمهٔ تم روشن/تاریک ---
-        self._theme_btn = QPushButton("☀️ روشن" if settings_manager.get_theme() == "dark" else "🌙 تاریک")
-        self._theme_btn.setObjectName("chip")
+        self._theme_btn = QPushButton("☀️" if settings_manager.get_theme() == "dark" else "🌙")
+        self._theme_btn.setObjectName("iconBtn")
+        self._theme_btn.setFixedSize(48, 36)
+        self._theme_btn.setToolTip("تغییر تم روشن/تاریک")
         self._theme_btn.setCursor(Qt.PointingHandCursor)
         self._theme_btn.clicked.connect(self._toggle_theme)
 
-        # --- دکمهٔ تنظیمات (تم + اندازه فونت در یک پنجره) ---
-        self._settings_btn = QPushButton("⚙️ تنظیمات")
-        self._settings_btn.setObjectName("chip")
+        self._settings_btn = QPushButton("⚙️")
+        self._settings_btn.setObjectName("iconBtn")
+        self._settings_btn.setFixedSize(48, 36)
+        self._settings_btn.setToolTip("تنظیمات (تم و اندازه فونت)")
         self._settings_btn.setCursor(Qt.PointingHandCursor)
         self._settings_btn.clicked.connect(self._open_settings)
+
+        icon_row = QHBoxLayout()
+        icon_row.setSpacing(6)
+        icon_row.addStretch()
+        icon_row.addWidget(self._bell_btn)
+        icon_row.addWidget(self._theme_btn)
+        icon_row.addWidget(self._settings_btn)
 
         # --- سایدبار + صفحه‌ها ---
         self._sidebar = QListWidget()
@@ -1042,9 +1058,7 @@ class MainWindow(QMainWindow):
         side_lay = QVBoxLayout()
         side_lay.setContentsMargins(0, 8, 0, 8)
         side_lay.addWidget(side_title)
-        side_lay.addWidget(self._bell_btn)
-        side_lay.addWidget(self._theme_btn)
-        side_lay.addWidget(self._settings_btn)
+        side_lay.addLayout(icon_row)
         side_lay.addWidget(self._sidebar, 1)
 
 
@@ -1129,7 +1143,7 @@ class MainWindow(QMainWindow):
             c = api_client.chat_unread_total().get("unread", 0)
         except ApiError:
             c = 0
-        self._bell_btn.setText(f"🔔 ({n + c})" if (n or c) else "🔔 اطلاع‌یه‌ها")
+        self._bell_btn.setText(f"🔔 {n + c}" if (n or c) else "🔔")
 
     def _open_notifications(self):
         NotificationsDialog(on_changed=self._refresh_bell).exec()
@@ -1139,7 +1153,7 @@ class MainWindow(QMainWindow):
         from ui.settings_dialog import SettingsDialog
         SettingsDialog(self).exec()
         # اگر تم یا فونت در دیالوگ عوض شد، اینجا همگام شود
-        self._theme_btn.setText("☀️ روشن" if settings_manager.get_theme() == "dark" else "🌙 تاریک")
+        self._theme_btn.setText("☀️" if settings_manager.get_theme() == "dark" else "🌙")  
         self._sidebar.setFixedWidth(max(210, int(210 * settings_manager.get_font_size() / 13)))
 
 
@@ -1147,7 +1161,8 @@ class MainWindow(QMainWindow):
         new_mode = "light" if settings_manager.get_theme() == "dark" else "dark"
         settings_manager.set_theme(new_mode)
         apply_persian_rtl_style(QApplication.instance(), mode=new_mode)
-        self._theme_btn.setText("☀️ روشن" if new_mode == "dark" else "🌙 تاریک")
+        self._theme_btn.setText("☀️" if new_mode == "dark" else "🌙")          # در _toggle_theme
+
 
         # رفرش حباب‌های چت با تم جدید (هم گفت‌وگوی انسانی، هم صفحه‌ی ربات)
         try:

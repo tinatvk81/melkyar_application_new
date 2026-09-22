@@ -68,6 +68,7 @@ QListWidget#sideNav::item:hover { background: rgba(255,255,255,0.06); color: #ff
 QListWidget#sideNav::item:selected { background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 rgba(245,166,35,0.28), stop:1 rgba(249,115,22,0.14)); color: #ffd08a; font-weight: 700; }
 QLabel#sideTitle { font-size: 13px; font-weight: 800; color: #f5a623; padding: 8px 14px 4px; background: transparent; }
 QPushButton#bellLabel { background: rgba(245,166,35,0.10); border: 1px solid rgba(245,166,35,0.4); border-radius: 10px; padding: 9px; margin: 6px 10px; }
+QPushButton#iconBtn { padding: 4px 8px; border-radius: 10px; font-size: 15px; }
 """
 
 LIGHT_QSS = """
@@ -126,6 +127,7 @@ QListWidget#sideNav::item:hover { background: #f0f2f9; color: #1c2333; }
 QListWidget#sideNav::item:selected { background: rgba(245,166,35,0.20); color: #b26a00; font-weight: 700; }
 QLabel#sideTitle { font-size: 13px; font-weight: 800; color: #f5a623; padding: 8px 14px 4px; background: transparent; }
 QPushButton#bellLabel { background: #fff7e8; border: 1px solid rgba(245,166,35,0.45); border-radius: 10px; padding: 9px; margin: 6px 10px; }
+QPushButton#iconBtn { padding: 4px 8px; border-radius: 10px; font-size: 15px; }
 """
 
 THEMES = {"dark": DARK_QSS, "light": LIGHT_QSS}

@@ -170,13 +170,17 @@ class LoginWindow(QWidget):
 
         cv.addWidget(self._label("نام کاربری"))
         self.username_input = QLineEdit(settings_manager.get_saved_username() or "")
-        self.username_input.setPlaceholderText("مثلاً amllak")
+
         cv.addWidget(self.username_input)
 
         cv.addWidget(self._label("رمز عبور"))
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText("••••••••")
         self.password_input.setEchoMode(QLineEdit.Password)
+        # «مرا به خاطر بسپار»: رمز ذخیره‌شده هم مثل نام کاربری بازیابی شود
+        _saved_pw = settings_manager.load_settings().get("saved_password") or ""
+        if _saved_pw:
+            self.password_input.setText(_saved_pw)
         self.password_input.returnPressed.connect(self.handle_login)
         cv.addWidget(self.password_input)
 
