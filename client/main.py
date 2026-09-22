@@ -53,6 +53,7 @@ def _limit_main_window(win):
 
 def main():
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")   # رندر یکسان روی ویندوز ۱۰/۱۱ — رفع ناهماهنگی سیستم‌های قدیمی
     app.setWindowIcon(QIcon(resource_path("resources", "icons", "melkyar.ico")))
     apply_persian_rtl_style(app, mode=settings_manager.get_theme())
 

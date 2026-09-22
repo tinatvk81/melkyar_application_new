@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QListWidget
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
-    QFileDialog, QComboBox, QHeaderView, QStackedWidget, QFrame, QAbstractItemView
+    QFileDialog, QComboBox, QHeaderView, QStackedWidget, QFrame, QAbstractItemView,QScrollArea
 )
 from collections import Counter
 from PySide6.QtCore import Signal
@@ -184,22 +184,32 @@ class PropertyListTab(QWidget):
         search_row.addWidget(QLabel("🔍"))
         search_row.addWidget(self.filter_panel.search_input, 1)
 
+        # پنل فیلتر داخل ناحیهٔ ارتفاع‌محدود با اسکرول داخلی — تا نمایان‌شدنش جدول را له نکند
+        self._filter_wrap = QScrollArea()
+        self._filter_wrap.setWidgetResizable(True)
+        self._filter_wrap.setFrameShape(QFrame.NoFrame)
+        self._filter_wrap.setWidget(self.filter_panel)
+        _scr = QApplication.primaryScreen().availableGeometry()
+        self._filter_wrap.setMaximumHeight(int(_scr.height() * 0.42))
+        self.filter_panel.setMaximumWidth(1250)   # پنل روی مانیتور عریض بی‌نهایت کشیده نشود
+
         layout = QVBoxLayout()
         layout.addLayout(search_row)
         layout.addLayout(tools_row)
-        layout.addWidget(self.filter_panel)
+        layout.addWidget(self._filter_wrap)
         layout.addLayout(top_bar)
-        layout.addWidget(self.table)
-        layout.addWidget(self.card_view)
+        layout.addWidget(self.table, 1)      # جدول اولویتِ فضای اضافه را می‌گیرد
+        layout.addWidget(self.card_view, 1)
         layout.addLayout(pagination_bar)
         self.setLayout(layout)
 
         self.load_properties()
 
     def _toggle_filters(self):
-        show = not self.filter_panel.isVisible()
-        self.filter_panel.setVisible(show)
+        show = not self._filter_wrap.isVisible()
+        self._filter_wrap.setVisible(show)
         self.toggle_filter_btn.setText("پنهان کردن فیلترها ▲" if show else "نمایش فیلترها ▼")
+
 
     def _reload_all(self):
         self.load_properties()
@@ -589,9 +599,9 @@ class RenewalsTab(QWidget):
         self.table.setShowGrid(False)
         self.table.verticalHeader().setDefaultSectionSize(44)
         self.table.setStyleSheet(
-            "QTableWidget { background: transparent; border: none; }"
+            "QTableWidget { border: none; }"  
             "QTableWidget::item { border-bottom: 1px solid rgba(128,128,140,0.30); }"
-            "QTableWidget::item:selected { background: rgba(245,166,35,0.25); }")
+            "QTableWidget::item:selected { background: rgba(245,166,35,0.28); }")
         self.table.doubleClicked.connect(self._on_cell_double_click)
         self.sort_combo.currentIndexChanged.connect(self._render)
 
