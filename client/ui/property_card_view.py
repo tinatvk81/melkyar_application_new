@@ -190,6 +190,10 @@ class PropertyCardView(QWidget):
         self.scroll.setWidget(self.holder)
         outer.addWidget(self.scroll, 1)
 
+        # ریشه‌ای: نمای کارتی هرگز عرض پنجره را تحمیل نمی‌کند —
+        # عرض = هرچه layout بدهد؛ محتوای بیشتر => اسکرول، نه بیرون‌زدن از صفحه
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # کارت‌ها همیشه کل عرض را پوشش دهند (RTL: ستون‌ها به سمت چپ گسترش)
         for c in range(3):
             self.grid.setColumnStretch(c, 1)

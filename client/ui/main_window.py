@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
     QFileDialog, QComboBox, QHeaderView, QStackedWidget, QFrame, QAbstractItemView,QScrollArea
 )
+from PySide6.QtWidgets import QSizePolicy
 from collections import Counter
 from PySide6.QtCore import Signal
 from ui.global_search import GlobalSearchDialog
@@ -201,6 +202,7 @@ class PropertyListTab(QWidget):
         _scr = QApplication.primaryScreen().availableGeometry()
         self._filter_wrap.setMaximumHeight(int(_scr.height() * 0.42))
         self.filter_panel.setMaximumWidth(1250) 
+        self._filter_wrap.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
         layout = QVBoxLayout()
         layout.addLayout(search_row)

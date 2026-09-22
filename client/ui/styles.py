@@ -2,7 +2,7 @@
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontDatabase, QFont
+from PySide6.QtGui import QFontDatabase, QFont, QPalette, QColor
 from PySide6.QtWidgets import QApplication
 
 from resource_path import resource_path
@@ -142,6 +142,35 @@ QPushButton#iconBtn { padding: 4px 8px; border-radius: 10px; font-size: 15px; }
 
 THEMES = {"dark": DARK_QSS, "light": LIGHT_QSS}
 
+def _apply_palette(app: QApplication, mode: str):
+    """ریشهٔ حل سفیدی‌ها: هر ناحیه‌ای که QSS نقاشی‌اش نکند به پالت برمی‌گردد.
+    پالت تیره = هیچ ناحیه‌ای در هیچ سیستمی دیگر سفید نمی‌شود."""
+    pal = QPalette()
+    if mode == "light":
+        colors = {
+            QPalette.Window: "#f4f6fb", QPalette.WindowText: "#1c2333",
+            QPalette.Base: "#ffffff", QPalette.AlternateBase: "#f7f8fc",
+            QPalette.Text: "#1c2333", QPalette.Button: "#ffffff",
+            QPalette.ButtonText: "#1c2333", QPalette.ToolTipBase: "#ffffff",
+            QPalette.ToolTipText: "#1c2333", QPalette.Highlight: "#f5a623",
+            QPalette.HighlightedText: "#ffffff", QPalette.Link: "#7dd3fc",
+        }
+        placeholder = QColor(28, 35, 51, 140)
+    else:
+        colors = {
+            QPalette.Window: "#0e1019", QPalette.WindowText: "#eceaf4",
+            QPalette.Base: "#0e1019", QPalette.AlternateBase: "#14111f",
+            QPalette.Text: "#eceaf4", QPalette.Button: "#171426",
+            QPalette.ButtonText: "#eceaf4", QPalette.ToolTipBase: "#1c1830",
+            QPalette.ToolTipText: "#eceaf4", QPalette.Highlight: "#f5a623",
+            QPalette.HighlightedText: "#241300", QPalette.Link: "#7dd3fc",
+        }
+        placeholder = QColor(236, 234, 244, 115)
+    for role, hexcolor in colors.items():
+        pal.setColor(role, QColor(hexcolor))
+    pal.setColor(QPalette.PlaceholderText, placeholder)
+    app.setPalette(pal)
+
 def apply_persian_rtl_style(app: QApplication, mode: str = "dark", font_size: int | None = None):
     """تم + فونت پایه. اندازه فونت (۱۲ تا ۲۴ پیکسل) فقط از یک منبع تعیین می‌شود:
     app.setFont. اندازه در خود QSS هاردکد نمی‌شود تا همه‌چیز یکدست بزرگ/کوچک شود."""
@@ -166,6 +195,7 @@ def apply_persian_rtl_style(app: QApplication, mode: str = "dark", font_size: in
     # اندازه‌ی 10pt از QSS حذف می‌شود تا فونت اپلیکیشن (اسلایدر تنظیمات) حاکم باشد.
     # تیتر «ملک‌یار» (13px) عمداً ثابت می‌ماند — لوگو نباید با فونت بزرگ شود.
     qss = qss.replace("font-size: 10pt;", "")
+    _apply_palette(app, mode)
     app.setStyleSheet(qss)
     return font_size
 
