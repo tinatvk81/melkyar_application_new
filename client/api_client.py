@@ -15,7 +15,7 @@ os.environ["no_proxy"] = "127.0.0.1,localhost"
 
 import requests
 
-
+import time
 def _to_api_error(e: Exception) -> ApiError:
     """خطای خام شبکه/timeout → ApiError با پیام فارسی روشن (بدون کرش UI)."""
     msg = str(e)
@@ -29,13 +29,23 @@ def _to_api_error(e: Exception) -> ApiError:
 
 class _SafeSession(requests.Session):
     """Session مشترک (TLS reuse) + نگه‌داشتن همهٔ خطاهای شبکه در یک نقطه.
-    چون get/post/put/delete همگی از request() رد می‌شوند، همین یک override
-    کل برنامه را در برابر timeout/قطعی شبکه کرش‌پروف می‌کند."""
+
+    نکتهٔ پایداری: مسیر ایران↔سرور خارجی گاهی لحظه‌ای قطع/کند می‌شود.
+    برای GET (که تکرارش بی‌خطر است) یک تلاش دوم خودکار با فاصلهٔ کوتاه
+    انجام می‌شود؛ POST/PUT/DELETE هرگز خودکار تکرار نمی‌شوند تا ریسک ثبت
+    دوبارهٔ داده (مثلاً دو پرداخت) نداشته باشیم."""
 
     def request(self, *args, **kwargs):
+        method = (args[0] if args else (kwargs.get("method") or "")).upper()
         try:
             return super().request(*args, **kwargs)
         except requests.RequestException as e:
+            if method == "GET":
+                time.sleep(0.8)
+                try:
+                    return super().request(*args, **kwargs)
+                except requests.RequestException as e2:
+                    raise _to_api_error(e2) from None
             raise _to_api_error(e) from None
 
 
