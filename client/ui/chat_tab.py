@@ -334,6 +334,7 @@ class ChatTab(QWidget):
         self._contacts = rows
         self._filter_contacts(self.contact_search.text())
 
+
     def _filter_contacts(self, term: str = ""):
         term = (term or "").strip().lower()
         self.contacts_list.blockSignals(True)
@@ -357,9 +358,12 @@ class ChatTab(QWidget):
             nm = QLabel(c["full_name"])
             nm.setStyleSheet("background: transparent;")
             h.addWidget(nm, 1)
+            w.setMinimumHeight(42)              # ردیف هم‌قدِ آواتار + کمی تنفس
             self.contacts_list.setItemWidget(item, w)
+            item.setSizeHint(w.sizeHint())      # ← فیکس اصلی: ارتفاع آیتم = ارتفاع ویجت
         self.contacts_list.blockSignals(False)
 
+        
     def _change_font(self, delta: int):
         app = QApplication.instance()
         cur = getattr(app, "chat_font_delta", 0)

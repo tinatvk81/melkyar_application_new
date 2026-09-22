@@ -37,6 +37,10 @@ from PySide6.QtGui import QKeySequence, QShortcut, QColor, QPixmap
 from ui.archive_tab import ArchiveTab
 from ui.agent_center_tab import AgentCenterTab
 
+
+DEAL_TYPE_COLORS = {"sale": "#7dd3fc", "rent": "#86efac", "presale": "#c4b5fd", "mortgage": "#fcd34d"}
+
+
 class PropertyListTab(QWidget):
     """فهرست فایل‌ها — برای مشاور فقط فایل‌های خودش، برای مدیر همه (فیلتر در سرور اعمال می‌شود)."""
 
@@ -53,18 +57,24 @@ class PropertyListTab(QWidget):
 
 
         self.table = QTableWidget()
-        self.table.setColumnCount(9)
+        self.table.setColumnCount(10)
         self.table.setHorizontalHeaderLabels(
-            ["عکس", "شهر", "نوع معامله", "قیمت", "متری", "متراژ", "اتاق", "آدرس", "تاریخ پایان قرارداد"]
+            ["⭐", "عکس", "شهر", "نوع معامله", "قیمت", "متری", "متراژ", "اتاق", "آدرس", "تاریخ پایان قرارداد"]
         )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
 
-        header.setSectionResizeMode(8, QHeaderView.Stretch)   # آدرس حالا ستون ۸ است
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
-        self.table.setColumnWidth(0, 64)
+        header.setSectionResizeMode(9, QHeaderView.Stretch)   # آدرس
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        self.table.setColumnWidth(1, 64)
+        header.setSectionResizeMode(0, QHeaderView.Fixed)     # ستاره
+        self.table.setColumnWidth(0, 44)
         self.table.verticalHeader().setDefaultSectionSize(56)
-
+        # ظاهر مینیمال: بدون خط عمودی، فقط جداکنندهٔ افقی نازک (مثل طرح جدید)
+        self.table.setShowGrid(False)
+        self.table.setStyleSheet(
+            "QTableWidget::item { padding: 6px; border-bottom: 1px solid rgba(128,128,140,0.30); }"
+            "QTableWidget::item:selected { background: rgba(245,166,35,0.28); }")
         # --- نمای کارتی (دیوارگونه) ---
         self.card_view = PropertyCardView(thumb_loader=self._get_thumb, on_open=self._open_property_card)
         self.card_view.setVisible(False)
@@ -77,7 +87,7 @@ class PropertyListTab(QWidget):
         self.table.setItemDelegate(self._delegate)
 
         bind_ctrl_f(self, self.filter_panel.search_input)
-
+        self.table.cellClicked.connect(self._on_star_clicked)
         add_btn = QPushButton("افزودن فایل جدید")
         add_btn.clicked.connect(self.handle_add_new)
 
@@ -157,14 +167,25 @@ class PropertyListTab(QWidget):
         self.urgent_filter_btn.setCheckable(True)
         self.urgent_filter_btn.setToolTip("فقط فایل‌های فوری: تاریخ فوری رد نشده یا قرارداد زیر ۷ روز")
         self.urgent_filter_btn.toggled.connect(self._toggle_urgent_filter)
-
+        self.fav_filter_btn = QPushButton("⭐ ستاره‌دارها")
+        self.fav_filter_btn.setObjectName("chip")
+        self.fav_filter_btn.setCheckable(True)
+        self.fav_filter_btn.setToolTip("فقط فایل‌هایی که خودت ستاره زدی")
+        self.fav_filter_btn.toggled.connect(self._toggle_fav_filter)
         tools_row = QHBoxLayout()
         tools_row.addWidget(self.toggle_filter_btn)
         tools_row.addWidget(self.quick_bar, 1)
         tools_row.addWidget(self.urgent_filter_btn)
+        tools_row.addWidget(self.fav_filter_btn)
         tools_row.addWidget(self.view_toggle_btn)
 
+        # جستجوی آزاد بالای همه‌چیز و همیشه نمایان (طبق طرح جدید)
+        search_row = QHBoxLayout()
+        search_row.addWidget(QLabel("🔍"))
+        search_row.addWidget(self.filter_panel.search_input, 1)
+
         layout = QVBoxLayout()
+        layout.addLayout(search_row)
         layout.addLayout(tools_row)
         layout.addWidget(self.filter_panel)
         layout.addLayout(top_bar)
@@ -197,13 +218,15 @@ class PropertyListTab(QWidget):
 
     def _handle_apply_filters(self, filters: dict):
         keep_urgent = self._current_filters.get("urgent_only")
+        keep_fav = self._current_filters.get("favorites_only")
         self._current_filters = filters
         if keep_urgent:
             self._current_filters["urgent_only"] = True
+        if keep_fav:
+            self._current_filters["favorites_only"] = True
         self._current_page = 1
         self.load_properties()
         if self.card_view.isVisible(): self.card_view.load(**self._current_filters)
-
 
     def _toggle_view(self):
         card_mode = not self.card_view.isVisible()
@@ -258,32 +281,43 @@ class PropertyListTab(QWidget):
         self._delegate.set_term(self.filter_panel.search_input.text())
         self.table.setRowCount(len(properties))
         for row, p in enumerate(properties):
+            star = QTableWidgetItem()
+            self._decorate_star(star, p.get("is_favorite"))
+            self.table.setItem(row, 0, star)
+
             item0 = QTableWidgetItem()
             if p.get("cover_image_id"):
                 pm = self._get_thumb(p["id"], p["cover_image_id"])
                 if pm:
                     item0.setData(Qt.DecorationRole, pm)
-            self.table.setItem(row, 0, item0)
-            self.table.setItem(row, 1, QTableWidgetItem(p.get("city", "")))
+            self.table.setItem(row, 1, item0)
+            self.table.setItem(row, 2, QTableWidgetItem(p.get("city", "")))
+
             dt_txt = DEAL_TYPE_LABELS.get(p.get("deal_type"), "")
             if p.get("urgent_until"):
                 dt_txt += "  🔥"
             if p.get("convertible_note"):
                 dt_txt += "  🔁"
-            self.table.setItem(row, 2, QTableWidgetItem(dt_txt))
+            dt_item = QTableWidgetItem(f"● {dt_txt}" if dt_txt else "")
+            dt_item.setForeground(QColor(DEAL_TYPE_COLORS.get(p.get("deal_type"), "#eceaf4")))
+            _df = dt_item.font(); _df.setBold(True); dt_item.setFont(_df)
+            self.table.setItem(row, 3, dt_item)
+
             price_item = QTableWidgetItem(p.get("price_display") or "—")
+            price_item.setForeground(QColor("#f5a623"))
             _pf = price_item.font(); _pf.setBold(True); price_item.setFont(_pf)
-            self.table.setItem(row, 3, price_item)
-            self.table.setItem(row, 4, QTableWidgetItem(p.get("price_per_m2_display") or "—"))
+            self.table.setItem(row, 4, price_item)
+
+            self.table.setItem(row, 5, QTableWidgetItem(p.get("price_per_m2_display") or "—"))
             _a = p.get("area_m2")
             _a_txt = f"{_a:g}" if _a else ""
-            self.table.setItem(row, 5, QTableWidgetItem(_a_txt))
-            self.table.setItem(row, 6, QTableWidgetItem(str(p.get("rooms") or "")))
+            self.table.setItem(row, 6, QTableWidgetItem(_a_txt))
+            self.table.setItem(row, 7, QTableWidgetItem(str(p.get("rooms") or "")))
             addr_item = QTableWidgetItem(p.get("address") or "")
             if p.get("convertible_note"):
                 addr_item.setToolTip(f"🔁 قابل تبدیل: {p['convertible_note']}")
-            self.table.setItem(row, 7, addr_item)
-            self.table.setItem(row, 8, QTableWidgetItem(to_jalali_str(p.get("contract_end_date"))))
+            self.table.setItem(row, 8, addr_item)
+            self.table.setItem(row, 9, QTableWidgetItem(to_jalali_str(p.get("contract_end_date"))))
 
     def _get_thumb(self, prop_id, image_id):
         if not hasattr(self, "_pix_cache"):
@@ -299,6 +333,45 @@ class PropertyListTab(QWidget):
         pm = pm.scaled(52, 52, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self._pix_cache[image_id] = pm
         return pm
+
+    def _decorate_star(self, item, is_fav):
+        if is_fav:
+            item.setText("★")
+            item.setForeground(QColor("#f5a623"))
+            item.setToolTip("حذف ستاره")
+        else:
+            item.setText("☆")
+            item.setForeground(QColor("#6b7280"))
+            item.setToolTip("افزودن به ستاره‌دارها")
+        item.setTextAlignment(Qt.AlignCenter)
+        f = item.font(); f.setBold(True); item.setFont(f)
+
+    def _on_star_clicked(self, row, column):
+        if column != 0 or not (0 <= row < len(self._properties_by_row)):
+            return
+        p = self._properties_by_row[row]
+        try:
+            res = api_client.toggle_favorite(p["id"])
+        except ApiError as e:
+            handle_api_error(self, e, "خطا در ستاره")
+            return
+        if self.fav_filter_btn.isChecked():
+            self.load_properties()   # اگر فیلتر ستاره‌دارها فعال است، ردیف برود/بیايد
+        else:
+            p["is_favorite"] = res.get("is_favorite")
+            it = self.table.item(row, 0)
+            if it:
+                self._decorate_star(it, p.get("is_favorite"))
+
+    def _toggle_fav_filter(self, checked: bool):
+        if checked:
+            self._current_filters["favorites_only"] = True
+        else:
+            self._current_filters.pop("favorites_only", None)
+        self._current_page = 1
+        self.load_properties()
+        if self.card_view.isVisible():
+            self.card_view.load(**self._current_filters)
 
     def handle_view_images(self):
         prop = self._selected_property()
@@ -454,56 +527,207 @@ class PropertyListTab(QWidget):
 
 
 class RenewalsTab(QWidget):
+    """قراردادهای رو‌به‌اتمام — چیپ‌های بازه + مرتب‌سازی + بج روز مانده + دکمهٔ مشاهده."""
+
+    _FA = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+    RANGES = [("all", "همه"), ("past", "⏮ گذشته"), ("week", "🔴 ۷ روز آینده"),
+              ("mid", "🟡 ۸ تا ۱۴ روز"), ("late", "۱۵ تا ۳۰ روز")]
+    SORTS = [("date_asc", "تاریخ پایان (نزدیک‌تر اول)"),
+             ("date_desc", "تاریخ پایان (دورتر اول)"),
+             ("city", "شهر")]
+
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
-        self._items = []
+        self._items = []       # همهٔ دادهٔ سرور
+        self._visible = []     # پس از فیلتر/مرتب‌سازی — مبنای رندر و دکمه‌ها
+        self._range = "all"
+
+        head = QVBoxLayout()
+        title = QLabel("📅 قراردادهای رو‌به‌اتمام")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-size: 17px; font-weight: 800; color: #f5a623; background: transparent;")
+        self.subtitle = QLabel("")
+        self.subtitle.setAlignment(Qt.AlignCenter)
+        self.subtitle.setStyleSheet("font-size: 11px; color: rgba(128,128,140,0.95); background: transparent;")
+        head.addWidget(title)
+        head.addWidget(self.subtitle)
+
+        # --- چیپ‌های بازه + ترتیب ---
+        range_row = QHBoxLayout()
+        self._range_btns = {}
+        for key, label in self.RANGES:
+            b = QPushButton(label)
+            b.setObjectName("chip")
+            b.setCheckable(True)
+            b.setChecked(key == self._range)
+            b.clicked.connect(lambda _=False, k=key: self._set_range(k))
+            self._range_btns[key] = b
+            range_row.addWidget(b)
+        range_row.addStretch()
+        range_row.addWidget(QLabel("ترتیب:"))
+        self.sort_combo = QComboBox()
+        for v, l in self.SORTS:
+            self.sort_combo.addItem(l, v)
+        range_row.addWidget(self.sort_combo)
+
+        # --- جدول ---
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["شهر", "آدرس", "نام مالک", "تاریخ پایان قرارداد", "تلفن مالک"])
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels(["#", "شهر", "آدرس", "مالک", "تاریخ پایان", "تلفن مالک", ""])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.cellDoubleClicked.connect(self._on_cell_double_click)
-        hint = QLabel("برای پیگیری و ویرایش فایل، روی ردیف دابل‌کلیک کنید.")
-        refresh_btn = QPushButton("به‌روزرسانی")
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setDefaultSectionSize(44)
+        self.table.setStyleSheet(
+            "QTableWidget { background: transparent; border: none; }"
+            "QTableWidget::item { border-bottom: 1px solid rgba(128,128,140,0.30); }"
+            "QTableWidget::item:selected { background: rgba(245,166,35,0.25); }")
+        self.table.doubleClicked.connect(self._on_cell_double_click)
+        self.sort_combo.currentIndexChanged.connect(self._render)
+
+        refresh_btn = QPushButton("🔄 به‌روزرسانی")
+        refresh_btn.setObjectName("chip")
         refresh_btn.clicked.connect(self.load_renewals)
         bar = QHBoxLayout()
-        bar.addWidget(hint)
         bar.addStretch()
         bar.addWidget(refresh_btn)
 
-        layout = QVBoxLayout()
-        layout.addLayout(bar)
-        layout.addWidget(self.table)
-        self.setLayout(layout)
+        lay = QVBoxLayout(self)
+        lay.addLayout(head)
+        lay.addSpacing(4)
+        lay.addLayout(range_row)
+        lay.addLayout(bar)
+        lay.addWidget(self.table)
         self.load_renewals()
 
-
-    def _on_cell_double_click(self, row, column):
-        if 0 <= row < len(self._items):
-            PropertyFormDialog(property_data=self._items[row], on_saved=self.load_renewals).exec()
-
-
+    def _set_range(self, key):
+        self._range = key
+        for k, b in self._range_btns.items():
+            b.setChecked(k == key)
+        self._render()
 
     def load_renewals(self):
+        TableSpinner.show(self.table)
         try:
-            self._items = api_client.upcoming_renewals(days=30)
+            items = api_client.upcoming_renewals(days=30)
         except ApiError as e:
+            TableSpinner.hide(self.table)
             handle_api_error(self, e, "خطا")
             return
-        self.table.setRowCount(len(self._items))
-        for row, p in enumerate(self._items):
-            self.table.setItem(row, 0, QTableWidgetItem(p.get("city", "")))
-            self.table.setItem(row, 1, QTableWidgetItem(p.get("address") or ""))
-            
-            self.table.setItem(row, 2, QTableWidgetItem(p.get("owner_name") or ""))
-            self.table.setItem(row, 3, QTableWidgetItem(to_jalali_str(p.get("contract_end_date"))))
-            self.table.setItem(row, 4, QTableWidgetItem(p.get("owner_phone") or ""))
+        TableSpinner.hide(self.table)
+        self._items = items
+        self._render()
 
-    def _open_selected(self):
-        row = self.table.currentRow()
-        if 0 <= row < len(self._items):
-            PropertyFormDialog(property_data=self._items[row], on_saved=self.load_renewals).exec()
+    def _render(self):
+        from datetime import date as _date
+        today = _date.today()
+
+        def left_of(p):
+            iso = p.get("contract_end_date")
+            if not iso:
+                return None
+            try:
+                return (_date.fromisoformat(iso) - today).days
+            except ValueError:
+                return None
+
+        key = self._range
+        rows = []
+        for p in self._items:
+            l = left_of(p)
+            if key == "all":
+                rows.append(p)
+            elif key == "past" and l is not None and l < 0:
+                rows.append(p)
+            elif key == "week" and l is not None and 0 <= l <= 7:
+                rows.append(p)
+            elif key == "mid" and l is not None and 8 <= l <= 14:
+                rows.append(p)
+            elif key == "late" and l is not None and 15 <= l <= 30:
+                rows.append(p)
+
+        mode = self.sort_combo.currentData()
+        if mode == "date_desc":
+            rows.sort(key=lambda p: p.get("contract_end_date") or "0000-01-01", reverse=True)
+        elif mode == "city":
+            rows.sort(key=lambda p: p.get("city") or "")
+        else:
+            rows.sort(key=lambda p: p.get("contract_end_date") or "9999-12-31")
+
+        self._visible = rows
+        self.subtitle.setText(
+            f"{str(len(rows)).translate(self._FA)} قرارداد از "
+            f"{str(len(self._items)).translate(self._FA)} — {self.sort_combo.currentText()}")
+
+        for r in range(self.table.rowCount()):
+            w = self.table.cellWidget(r, 6)
+            if w:
+                w.deleteLater()
+        self.table.clearSpans()
+        self.table.setRowCount(len(rows))
+
+        for row, p in enumerate(rows):
+            num = QTableWidgetItem(str(row + 1).translate(self._FA))
+            num.setForeground(QColor("#f5a623"))
+            nf = num.font(); nf.setBold(True); num.setFont(nf)
+            num.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row, 0, num)
+
+            self.table.setItem(row, 1, QTableWidgetItem(p.get("city", "")))
+            self.table.setItem(row, 2, QTableWidgetItem(p.get("address") or ""))
+            self.table.setItem(row, 3, QTableWidgetItem(p.get("owner_name") or ""))
+            self.table.setItem(row, 5, QTableWidgetItem(p.get("owner_phone") or ""))
+
+            iso = p.get("contract_end_date")
+            date_item = QTableWidgetItem(to_jalali_str(iso))
+            if iso:
+                l = left_of(p)
+                if l is not None:
+                    fa_left = str(abs(l)).translate(self._FA)
+                    base = date_item.text()
+                    if l < 0:
+                        date_item.setText(f"⚠️ {fa_left} روز گذشته — {base}")
+                        color = "#ef4444"
+                    elif l <= 7:
+                        date_item.setText(f"🔴 {fa_left} روز مانده — {base}")
+                        color = "#ef4444"
+                    elif l <= 14:
+                        date_item.setText(f"🟡 {fa_left} روز مانده — {base}")
+                        color = "#f5a623"
+                    else:
+                        date_item.setText(f"{fa_left} روز مانده — {base}")
+                        color = None
+                    if color:
+                        date_item.setForeground(QColor(color))
+                        df = date_item.font(); df.setBold(True); date_item.setFont(df)
+            self.table.setItem(row, 4, date_item)
+
+            btn = QPushButton("مشاهده")
+            btn.setObjectName("chip")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setToolTip("باز کردن فرم فایل برای پیگیری تمدید")
+            btn.clicked.connect(lambda _=False, idx=row: self._open_row(idx))
+            self.table.setCellWidget(row, 6, btn)
+
+        if not rows:
+            self.table.setRowCount(1)
+            empty = QTableWidgetItem("✅ در این فیلتر موردی نیست")
+            empty.setForeground(QColor("#86efac"))
+            empty.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(0, 0, empty)
+            self.table.setSpan(0, 0, 1, 7)
+
+    def _open_row(self, row):
+        if 0 <= row < len(self._visible):
+            PropertyFormDialog(property_data=self._visible[row], on_saved=self.load_renewals).exec()
+
+    def _on_cell_double_click(self, row, column):
+        self._open_row(row)
 
 
 

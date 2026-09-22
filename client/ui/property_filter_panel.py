@@ -143,14 +143,9 @@ class PropertyFilterPanel(QWidget):
         grid.addWidget(self.sort_by_combo, 6, 1)
         grid.addWidget(self.sort_order_combo, 6, 2)
 
-        search_row = QHBoxLayout()
-        search_row.addWidget(QLabel("جستجوی آزاد:"))
-        search_row.addWidget(self.search_input)
-
-        outer = QVBoxLayout()
-        outer.addLayout(search_row)
-        outer.addLayout(grid)
-        self.setLayout(outer)
+        # جستجوی آزاد به نوار بالای تب منتقل شد (در main_window) تا با پنهان‌شدن
+        # فیلترها همیشه در دسترس بماند — طبق طرح جدید.
+        self.setLayout(grid)
 
     def _handle_apply(self):
         try:

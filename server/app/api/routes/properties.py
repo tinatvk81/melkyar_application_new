@@ -10,7 +10,7 @@ from app.models.user import User, UserRole
 from app.schemas.property import PropertyCreate, PropertyRead, PropertyUpdate, PropertyListResponse
 from app.services.activity_log_service import log_activity
 from app.models.property_image import PropertyImage
-
+from app.models.property_favorite import PropertyFavorite
 from datetime import date, timedelta, datetime, timezone
 from app.api.deps import get_current_user, require_admin   
 from app.models.notification import Notification         
@@ -77,7 +77,9 @@ def _price_expression():
         Property.details["monthly_rent"].astext.cast(Float),
     )
 
-def _attach_cover_info(db: Session, response: PropertyListResponse) -> PropertyListResponse:
+
+def _attach_cover_info(db: Session, response: PropertyListResponse,
+                       current_user: User = None) -> PropertyListResponse:
     ids = [it.id for it in response.items]
     if not ids:
         return response
@@ -88,6 +90,13 @@ def _attach_cover_info(db: Session, response: PropertyListResponse) -> PropertyL
         .all()
     )
     cover_map = dict(rows)
+    fav_ids = set()
+    if current_user is not None:
+        fav_ids = set(
+            f.property_id for f in db.query(PropertyFavorite)
+            .filter(PropertyFavorite.user_id == current_user.id,
+                    PropertyFavorite.property_id.in_(ids)).all()
+        )
     for it in response.items:
         cid = cover_map.get(it.id)
         it.cover_image_id = cid
@@ -95,8 +104,8 @@ def _attach_cover_info(db: Session, response: PropertyListResponse) -> PropertyL
         dt = it.deal_type.value if hasattr(it.deal_type, "value") else str(it.deal_type)
         it.price_display = _price_display(dt, it.details)
         it.price_per_m2_display = _price_per_m2_display(dt, it.details, it.area_m2)
+        it.is_favorite = it.id in fav_ids
     return response
-
 
 def apply_filters(
     q,
@@ -220,6 +229,7 @@ def list_properties(
     current_user: User = Depends(get_current_user),
     property_type: Optional[str] = None,
     urgent_only: Optional[bool] = None,
+    favorites_only: Optional[bool] = None,
     min_build_year: Optional[int] = None,
     max_build_year: Optional[int] = None,
     max_total_units: Optional[int] = None,
@@ -251,6 +261,9 @@ def list_properties(
                  Property.contract_end_date >= today,
                  Property.contract_end_date <= week_later),
         ))
+    if favorites_only:
+        q = q.join(PropertyFavorite, PropertyFavorite.property_id == Property.id).filter(
+            PropertyFavorite.user_id == current_user.id)
     order_clause = _build_order_clause(sort_by, sort_order)
 
     if min_build_year is not None:
@@ -262,7 +275,8 @@ def list_properties(
 
     if min_total_units is not None:
         q = q.filter(Property.total_units >= min_total_units)
-    return _attach_cover_info(db, _paginate(q, page, page_size, order_clause=order_clause))
+    return _attach_cover_info(db, _paginate(q, page, page_size, order_clause=order_clause),
+                              current_user=current_user)
 
 
 @router.get("/archived", response_model=PropertyListResponse)
@@ -437,6 +451,26 @@ def stale_properties(days: int = 30, db: Session = Depends(get_db),
     return q.order_by(Property.created_at.asc()).limit(100).all()
 
 
+@router.post("/{property_id}/favorite")
+def toggle_favorite(property_id: int, db: Session = Depends(get_db),
+                    current_user: User = Depends(get_current_user)):
+    """ستارهٔ شخصی: اگر هست برمی‌دارد، نیست اضافه می‌کند. هر کاربر لیست خودش."""
+    prop = _base_query(db, current_user).filter(Property.id == property_id).first()
+    if not prop:
+        raise HTTPException(404, "فایل پیدا نشد یا دسترسی ندارید")
+    existing = db.query(PropertyFavorite).filter(
+        PropertyFavorite.user_id == current_user.id,
+        PropertyFavorite.property_id == property_id,
+    ).first()
+    if existing:
+        db.delete(existing)
+        db.commit()
+        return {"is_favorite": False}
+    db.add(PropertyFavorite(user_id=current_user.id, property_id=property_id))
+    db.commit()
+    return {"is_favorite": True}
+
+    
 @router.post("/", response_model=PropertyRead)
 def create_property(
     data: PropertyCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)

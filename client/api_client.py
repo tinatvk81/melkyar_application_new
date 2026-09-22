@@ -106,6 +106,14 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
+
+    def toggle_favorite(self, property_id: int):
+        resp = self._post(f"{self.server_url}/properties/{property_id}/favorite",
+                          headers=self._headers, timeout=10)
+        self._raise_for_status(resp)
+        return resp.json()
+
+        
     def upcoming_renewals(self, days: int = 30):
         resp = self._get(
             f"{self.server_url}/properties/renewals", params={"days": days}, headers=self._headers, timeout=10

@@ -1,11 +1,17 @@
+from datetime import date as _date
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QFrame, QPushButton, QHBoxLayout
 from ui.charts import BarChart, HBarChart
+from ui.jalali_util import to_jalali_str
+import settings_manager
 from api_client import api_client, ApiError
 from session import handle_api_error
 
+
 class StatCard(QFrame):
-    clicked = Signal()   # ← این خط را جا انداخته بودی
+    """کارت آمار — طرح جدید: عنوان بالا، عدد درشت پایین."""
+    clicked = Signal()
 
     def __init__(self, title: str, color: str = "#8b94ff"):
         super().__init__()
@@ -13,24 +19,28 @@ class StatCard(QFrame):
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setCursor(Qt.PointingHandCursor)
 
-        self.value_label = QLabel("—")
-        self.value_label.setAlignment(Qt.AlignCenter)
-        self.value_label.setStyleSheet(
-            f"font-size: 26px; font-weight: bold; color: {color};"
-            "background: transparent; border: none;"
-        )
+        light = settings_manager.get_theme() == "light"
+        sub_c = "rgba(60,70,90,0.80)" if light else "rgba(232,236,248,0.65)"
 
         title_label = QLabel(title)
         title_label.setAlignment(Qt.AlignCenter)
+        title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            "font-size: 12px; color: rgba(232,236,248,0.65);"
-            "background: transparent; border: none;"
-        )
+            f"font-size: 11px; color: {sub_c}; background: transparent; border: none;")
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.value_label)
-        layout.addWidget(title_label)
-        self.setLayout(layout)
+        self.value_label = QLabel("—")
+        self.value_label.setAlignment(Qt.AlignCenter)
+        self.value_label.setStyleSheet(
+            f"font-size: 26px; font-weight: 800; color: {color};"
+            "background: transparent; border: none;")
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(10, 12, 10, 12)
+        lay.setSpacing(4)
+        lay.addWidget(title_label)
+        lay.addWidget(self.value_label)
+        self.setLayout(lay)
+        self.setMinimumHeight(88)
 
     def set_value(self, value):
         self.value_label.setText(str(value))
@@ -46,6 +56,11 @@ class DashboardTab(QWidget):
         self.setLayoutDirection(Qt.RightToLeft)
         self._on_navigate = on_navigate
 
+        light = settings_manager.get_theme() == "light"
+        fg = "#1c2333" if light else "#eceaf4"
+        sub_c = "rgba(60,70,90,0.80)" if light else "rgba(232,236,248,0.60)"
+
+        # --- کارت‌ها (همه حفظ شده‌اند) ---
         self.total_card = StatCard("کل فایل‌های فعال", color="#f5a623")
         self.sale_card = StatCard("فروش", color="#7dd3fc")
         self.presale_card = StatCard("پیش‌خرید", color="#c4b5fd")
@@ -60,7 +75,13 @@ class DashboardTab(QWidget):
 
         role_fa = "مدیر" if api_client.role == "admin" else "مشاور"
         welcome = QLabel(f"👋 خوش آمدید، {api_client.full_name} ({role_fa})")
-        welcome.setStyleSheet("font-size: 14px; font-weight: bold; color: #f5a623; background: transparent;")
+        welcome.setStyleSheet("font-size: 14px; font-weight: 800; color: #f5a623; background: transparent;")
+
+        # «آخرین به‌روزرسانی» با خط تاکید طلایی — مثل طرح جدید
+        self.updated_label = QLabel("")
+        self.updated_label.setStyleSheet(
+            f"color: {sub_c}; font-size: 11px; background: transparent;"
+            "border-right: 3px solid #f5a623; padding-right: 8px;")
 
         self.total_card.clicked.connect(lambda: self._go("list"))
         self.sale_card.clicked.connect(lambda: self._go("list", "sale"))
@@ -74,6 +95,7 @@ class DashboardTab(QWidget):
             self.activity_today_card.clicked.connect(lambda: self._go("activity"))
 
         grid = QGridLayout()
+        grid.setSpacing(12)
         grid.addWidget(self.total_card, 0, 0)
         grid.addWidget(self.sale_card, 0, 1)
         grid.addWidget(self.presale_card, 0, 2)
@@ -82,35 +104,74 @@ class DashboardTab(QWidget):
         grid.addWidget(self.new_week_card, 1, 0)
         grid.addWidget(self.urgent_card, 1, 1)
         grid.addWidget(self.upcoming_card, 1, 2)
-        # فایل‌های عکس‌دار: همه‌ی نقش‌ها
         grid.addWidget(self.images_card, 1, 3)
         if api_client.role == "admin":
             grid.addWidget(self.agents_card, 1, 4)
             grid.addWidget(self.activity_today_card, 1, 5)
 
-        # --- نمودارها (فقط مدیر) ---
+        # --- کارت بزرگ نمودارها (فقط مدیر): تیتر + زیرتیتر + بج «۱۲ ماه اخیر» + حالت خالی ---
         self.charts_frame = None
         if api_client.role == "admin":
             self.chart_deals = BarChart(money=False)
             self.chart_agents = HBarChart()
-            w1 = QWidget(); b1 = QVBoxLayout(w1)
-            b1.addWidget(QLabel("📈 معامله‌های قطعی‌شده (۱۲ ماه اخیر)"))
-            b1.addWidget(self.chart_deals)
-            w2 = QWidget(); b2 = QVBoxLayout(w2)
-            b2.addWidget(QLabel("👥 پورسانت قطعی‌شده هر مشاور"))
-            b2.addWidget(self.chart_agents)
-            self.charts_frame = QHBoxLayout()
-            self.charts_frame.addWidget(w1, 1)
-            self.charts_frame.addWidget(w2, 1)
+            self.deals_empty = QLabel("📊 برای دیدن نمودار، اول معامله‌ای را قطعی کنید")
+            self.deals_empty.setAlignment(Qt.AlignCenter)
+            self.deals_empty.setStyleSheet(f"color: {sub_c}; background: transparent; border: none;")
+            self.agents_empty = QLabel("📊 هنوز پورسانت قطعی‌شده‌ای ثبت نشده است")
+            self.agents_empty.setAlignment(Qt.AlignCenter)
+            self.agents_empty.setStyleSheet(f"color: {sub_c}; background: transparent; border: none;")
 
-        refresh_btn = QPushButton("به‌روزرسانی")
+            badge = QLabel("۱۲ ماه اخیر")
+            badge.setStyleSheet(
+                "color: #4ade80; background: rgba(34,197,94,0.12);"
+                "border: 1px solid rgba(34,197,94,0.40);"
+                "border-radius: 10px; padding: 3px 12px; font-weight: bold;")
+
+            head = QHBoxLayout()
+            tcol = QVBoxLayout(); tcol.setSpacing(0)
+            t1 = QLabel("📈 معامله‌های قطعی‌شده")
+            t1.setStyleSheet(f"font-weight: 800; font-size: 13px; color: {fg}; background: transparent; border: none;")
+            t2 = QLabel("پورسانت قطعی‌شده بر مشاور")
+            t2.setStyleSheet(f"font-size: 11px; color: {sub_c}; background: transparent; border: none;")
+            tcol.addWidget(t1); tcol.addWidget(t2)
+            head.addLayout(tcol)
+            head.addStretch()
+            head.addWidget(badge)
+
+            w1 = QWidget(); b1 = QVBoxLayout(w1)
+            b1.setContentsMargins(0, 0, 0, 0)
+            b1.addWidget(self.chart_deals)
+            b1.addWidget(self.deals_empty)
+            w2 = QWidget(); b2 = QVBoxLayout(w2)
+            b2.setContentsMargins(0, 0, 0, 0)
+            b2.addWidget(self.chart_agents)
+            b2.addWidget(self.agents_empty)
+            body = QHBoxLayout()
+            body.addWidget(w1, 1)
+            body.addWidget(w2, 1)
+
+            charts_card = QFrame()
+            charts_card.setObjectName("statCard")
+            cl = QVBoxLayout(charts_card)
+            cl.setContentsMargins(14, 12, 14, 12)
+            cl.setSpacing(8)
+            cl.addLayout(head)
+            cl.addLayout(body)
+
+            self.charts_frame = QVBoxLayout()
+            self.charts_frame.addWidget(charts_card)
+
+        refresh_btn = QPushButton("🔄 به‌روزرسانی")
+        refresh_btn.setObjectName("chip")
         refresh_btn.clicked.connect(self.load_summary)
         top_bar = QHBoxLayout()
         top_bar.addStretch()
         top_bar.addWidget(refresh_btn)
 
         layout = QVBoxLayout()
+        layout.setContentsMargins(14, 10, 14, 10)
         layout.addWidget(welcome)
+        layout.addWidget(self.updated_label)
         layout.addLayout(top_bar)
         layout.addLayout(grid)
         self.pipeline_label = QLabel("")
@@ -128,6 +189,8 @@ class DashboardTab(QWidget):
         except ApiError as e:
             handle_api_error(self, e, "خطا در بارگذاری داشبورد")
             return
+
+        self.updated_label.setText(f"آخرین به‌روزرسانی: امروز، {to_jalali_str(_date.today().isoformat())}")
 
         self.total_card.set_value(data["total_active"])
         by_type = data.get("by_deal_type", {})
@@ -147,16 +210,20 @@ class DashboardTab(QWidget):
         if api_client.role == "admin":
             try:
                 chart = api_client.get_deals_chart(12)
-                if sum(c["count"] for c in chart) == 0:
-                    self.chart_deals.set_data([], [])
-                else:
+                has = sum(c["count"] for c in chart) > 0
+                if has:
                     self.chart_deals.set_data([c["month"][5:] for c in chart], [c["count"] for c in chart])
+                self.chart_deals.setVisible(has)
+                self.deals_empty.setVisible(not has)
             except ApiError:
                 pass
             try:
                 bal = api_client.get_balances()
                 rows = [(b["full_name"], b["earned"]) for b in bal if b["earned"] > 0]
-                self.chart_agents.set_data(rows or [("—", 0)])
+                if rows:
+                    self.chart_agents.set_data(rows)
+                self.chart_agents.setVisible(bool(rows))
+                self.agents_empty.setVisible(not rows)
             except ApiError:
                 pass
 
@@ -174,7 +241,6 @@ class DashboardTab(QWidget):
             self.pipeline_label.setText("مشتری‌ها: " + txt if txt else "")
         except ApiError:
             self.pipeline_label.setText("")
-            
 
     def _go(self, target, deal_type=None):
         if self._on_navigate:

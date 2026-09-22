@@ -3,14 +3,13 @@
 import re
 from html import escape
 from PySide6.QtCore import Qt, QRegularExpression, Signal
-from PySide6.QtGui import QValidator, QRegularExpressionValidator, QTextDocument, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QSpinBox, QDoubleSpinBox, QLineEdit, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QListWidget, QListWidgetItem, QListView, QMessageBox,
     QStyledItemDelegate, QStyle, QStyleOptionViewItem, QApplication,
 )
 from number_to_words import money_to_words
-
+from PySide6.QtGui import QValidator, QRegularExpressionValidator, QTextDocument, QKeySequence, QShortcut, QColor
 
 PERSIAN = "۰۱۲۳۴۵۶۷۸۹"
 ARABIC = "٠١٢٣٤٥٦٧٨٩"
@@ -300,10 +299,18 @@ class MatchHighlightDelegate(QStyledItemDelegate):
         opt.text = ""
         style = opt.widget.style() if opt.widget else QApplication.style()
         style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
+        # رنگ سفارشی سلول (بج نوع معامله، قیمت طلایی و…) هنگام هایلایت جست‌وجو حفظ شود
+        fg = index.data(Qt.ForegroundRole)
+        base_css = ""
+        if fg is not None:
+            try:
+                base_css = f"color:{(fg.color() if hasattr(fg, 'color') else fg).name()};"
+            except Exception:
+                base_css = ""
         pattern = re.compile(re.escape(self._term), re.IGNORECASE)
         html = pattern.sub(
             lambda m: f"<span style='color:#9db1ff; font-weight:700;'>{escape(m.group(0))}</span>",
-            escape(text))
+            f"<span style='{base_css}'>{escape(text)}</span>")
         doc = QTextDocument()
         doc.setDefaultFont(opt.font)
         doc.setHtml(html)
