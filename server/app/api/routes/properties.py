@@ -92,11 +92,16 @@ def _attach_cover_info(db: Session, response: PropertyListResponse,
     cover_map = dict(rows)
     fav_ids = set()
     if current_user is not None:
-        fav_ids = set(
-            f.property_id for f in db.query(PropertyFavorite)
-            .filter(PropertyFavorite.user_id == current_user.id,
-                    PropertyFavorite.property_id.in_(ids)).all()
-        )
+        try:
+            fav_ids = set(
+                f.property_id for f in db.query(PropertyFavorite)
+                .filter(PropertyFavorite.user_id == current_user.id,
+                        PropertyFavorite.property_id.in_(ids)).all()
+            )
+        except Exception:
+            # جدول ستاره‌ها هنوز ساخته نشده (migration عقب افتاده) —
+            # فهرست فایل‌ها نباید به‌خاطر یک فیچر فرعی ۵۰۰ بدهد
+            fav_ids = set()
     for it in response.items:
         cid = cover_map.get(it.id)
         it.cover_image_id = cid
@@ -470,7 +475,7 @@ def toggle_favorite(property_id: int, db: Session = Depends(get_db),
     db.commit()
     return {"is_favorite": True}
 
-    
+
 @router.post("/", response_model=PropertyRead)
 def create_property(
     data: PropertyCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
