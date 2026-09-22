@@ -16,18 +16,18 @@ from ui.property_form import DEAL_TYPE_LABELS, MoneyLineEdit
 from ui.jalali_date_edit import JalaliDateEdit
 from ui.toast import Toast
 from ui.jalali_util import to_jalali_str
+from ui.widgets import AVATAR_COLORS
 DEAL_STATUS_LABELS = {"pending": "در جریان", "finalized": "قطعی", "canceled": "لغو شده"}
 
 
 def _money(v):
     return f"{int(v or 0):,}"
 
-_AVATAR_COLORS = ["#f5a623", "#7dd3fc", "#86efac", "#c4b5fd", "#fca5a5", "#2dd4bf", "#fdba74"]
 
 def _avatar_item(name: str) -> QTableWidgetItem:
     """آواتار متنی: حرف اول نام داخل دایرهٔ رنگی + نام کنارش."""
     letter = (name or "?").strip()[:1].upper() or "?"
-    color = _AVATAR_COLORS[(len(name or "x")) % len(_AVATAR_COLORS)]
+    color = AVATAR_COLORS[(len(name or "x")) % len(AVATAR_COLORS)]
     it = QTableWidgetItem(f"{letter}  {name}")
     it.setForeground(QColor(color))
     f = it.font(); f.setBold(True); it.setFont(f)

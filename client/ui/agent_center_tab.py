@@ -4,13 +4,26 @@ from PySide6.QtWidgets import (
     QLabel, QMessageBox, QInputDialog, QLineEdit, QHeaderView, QDialog, QFormLayout,
     QTabWidget, QDoubleSpinBox, QAbstractItemView,
 )
+from PySide6.QtGui import QColor
 
+from ui.spinner import TableSpinner
 from api_client import api_client, ApiError
 from session import handle_api_error
 from ui.user_form_dialog import UserFormDialog
 from ui.property_form import DEAL_TYPE_LABELS
+from ui.widgets import AVATAR_COLORS
+from ui.jalali_util import to_jalali_str
 
 RATE_LABELS = [("sale", "فروش"), ("rent", "اجاره"), ("presale", "پیش‌خرید"), ("mortgage", "رهن کامل")]
+
+
+def _avatar_item(name: str) -> QTableWidgetItem:
+    letter = (name or "?").strip()[:1].upper() or "?"
+    color = AVATAR_COLORS[(len(name or "x")) % len(AVATAR_COLORS)]
+    it = QTableWidgetItem(f"{letter}  {name}")
+    it.setForeground(QColor(color))
+    f = it.font(); f.setBold(True); it.setFont(f)
+    return it
 
 
 class CommissionRatesDialog(QDialog):
@@ -71,23 +84,27 @@ class AgentDetailDialog(QDialog):
         # --- مشخصات ---
         info = QWidget()
         form = QFormLayout(info)
+        role_item = QLabel("● مدیر" if user["role"] == "admin" else "● مشاور")
+        role_item.setStyleSheet(
+            f"color: {'#f5a623' if user['role'] == 'admin' else '#7dd3fc'}; font-weight: bold;")
+        active_item = QLabel("● فعال" if user["is_active"] else "● غیرفعال")
+        active_item.setStyleSheet(
+            f"color: {'#22c55e' if user['is_active'] else '#ef4444'}; font-weight: bold;")
         form.addRow("نام کاربری:", QLabel(user["username"]))
         form.addRow("نام کامل:", QLabel(user["full_name"]))
-        form.addRow("نقش:", QLabel("مدیر" if user["role"] == "admin" else "مشاور"))
-        form.addRow("فعال:", QLabel("بله" if user["is_active"] else "خیر"))
+        form.addRow("نقش:", role_item)
+        form.addRow("وضعیت:", active_item)
         form.addRow("تلفن:", QLabel(user.get("phone") or "—"))
         rates = user.get("commission_rates") or {}
-        rates_txt = " | ".join(
-            f"{label}: {rates.get(key, '—')}٪" for key, label in RATE_LABELS
-        ) if rates else "تنظیم نشده"
+        rates_txt = " | ".join(f"{label}: {rates.get(key, '—')}٪" for key, label in RATE_LABELS) if rates else "تنظیم نشده"
         form.addRow("درصد پورسانت:", QLabel(rates_txt))
         tabs.addTab(info, "مشخصات")
 
         # --- فایل‌ها ---
         self.files_table = QTableWidget()
-        self.files_table.setColumnCount(5)
-        self.files_table.setHorizontalHeaderLabels(["#", "شهر", "نوع", "متراژ", "آدرس"])
-        self.files_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.files_table.setColumnCount(6)
+        self.files_table.setHorizontalHeaderLabels(["فایل", "شهر", "نوع", "متراژ", "قیمت", "آدرس"])
+        self.files_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
         self.files_table.setEditTriggers(QTableWidget.NoEditTriggers)
         tabs.addTab(self.files_table, "فایل‌ها")
 
@@ -107,8 +124,7 @@ class AgentDetailDialog(QDialog):
                            ("sale", "فروش"), ("presale", "پیش‌خرید"), ("rent", "اجاره"), ("mortgage", "رهن کامل")]:
             lbl = QLabel("—")
             self.perf_labels[key] = lbl
-            form_row = QLabel(label + ":")
-            perf_form.addRow(form_row, lbl)
+            perf_form.addRow(QLabel(label + ":"), lbl)
         tabs.addTab(perf, "عملکرد")
 
         # --- حسابداری ---
@@ -138,11 +154,16 @@ class AgentDetailDialog(QDialog):
             items = []
         self.files_table.setRowCount(len(items))
         for r, p in enumerate(items):
-            self.files_table.setItem(r, 0, QTableWidgetItem(str(p["id"])))
+            chip = QTableWidgetItem(f"🔖 MLK-{p['id']:04d}")
+            chip.setForeground(QColor("#7dd3fc"))
+            _cf = chip.font(); _cf.setBold(True); chip.setFont(_cf)
+            self.files_table.setItem(r, 0, chip)
             self.files_table.setItem(r, 1, QTableWidgetItem(p.get("city") or ""))
             self.files_table.setItem(r, 2, QTableWidgetItem(DEAL_TYPE_LABELS.get(p.get("deal_type"), "")))
-            self.files_table.setItem(r, 3, QTableWidgetItem(str(p.get("area_m2") or "")))
-            self.files_table.setItem(r, 4, QTableWidgetItem(p.get("address") or ""))
+            _a = p.get("area_m2")
+            self.files_table.setItem(r, 3, QTableWidgetItem(f"{_a:g}" if _a else "—"))
+            self.files_table.setItem(r, 4, QTableWidgetItem(p.get("price_display") or "—"))
+            self.files_table.setItem(r, 5, QTableWidgetItem(p.get("address") or ""))
 
     def _load_logs(self):
         try:
@@ -153,8 +174,12 @@ class AgentDetailDialog(QDialog):
             logs = []
         self.logs_table.setRowCount(len(logs))
         for r, log in enumerate(logs):
-            self.logs_table.setItem(r, 0, QTableWidgetItem(log["created_at"].replace("T", " ")[:16]))
-            self.logs_table.setItem(r, 1, QTableWidgetItem(log.get("action") or ""))
+            self.logs_table.setItem(r, 0, QTableWidgetItem(to_jalali_str(log["created_at"], with_time=True)))
+            act = log.get("action") or ""
+            it = QTableWidgetItem(f"● {act}")
+            it.setForeground(QColor({"create": "#22c55e", "login": "#7dd3fc",
+                                     "update": "#f5a623", "delete": "#ef4444"}.get(act, "#a5b4fc")))
+            self.logs_table.setItem(r, 1, it)
             self.logs_table.setItem(r, 2, QTableWidgetItem(log.get("entity_type") or ""))
             self.logs_table.setItem(r, 3, QTableWidgetItem(log.get("detail") or ""))
 
@@ -184,42 +209,68 @@ class AgentDetailDialog(QDialog):
         self.paid_lbl.setText(f"{mine['paid']:,} تومان")
         self.remaining_lbl.setText(f"{mine['remaining']:,} تومان")
 
+
 class AgentCenterTab(QWidget):
-    """مرکز مدیریت مشاوران: جدول کاربران + پروندهٔ کامل با دابل‌کلیک."""
+    """مرکز مدیریت مشاوران — نوار آمار + آواتار رنگی + بج نقش/وضعیت."""
+
+    ROLE_FA = {"admin": "مدیر", "agent": "مشاور"}
 
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
         self._users_by_row = []
 
+        # --- نوار عنوان + چیپ‌های آماری ---
+        title_row = QHBoxLayout()
+        ttl = QLabel("👥 مشاوران و مدیریت")
+        ttl.setStyleSheet("font-size: 15px; font-weight: 800; color: #f5a623; background: transparent;")
+        title_row.addWidget(ttl)
+        title_row.addSpacing(18)
+        self._stat_chips = {}
+        for key, label, color in [("total", "کل کاربران", "#f5a623"), ("admin", "مدیر", "#c4b5fd"),
+                                  ("agent", "مشاور", "#7dd3fc"), ("inactive", "غیرفعال", "#ef4444")]:
+            chip = QLabel(f"{label}: 0")
+            chip.setStyleSheet(
+                f"color: {color}; background: rgba(255,255,255,0.05);"
+                f"border: 1px solid {color}55; border-radius: 12px;"
+                "padding: 4px 12px; font-size: 11px; font-weight: bold;")
+            self._stat_chips[key] = chip
+            title_row.addWidget(chip)
+        title_row.addStretch()
+
+        # --- جدول ---
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["نام کاربری", "نام کامل", "نقش", "فعال", "تلفن", "درصد پورسانت"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels(
+            ["کاربر", "نام کاربری", "نقش", "وضعیت", "تلفن", "درصد پورسانت", "فایل‌ها"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.verticalHeader().setVisible(False)
         self.table.doubleClicked.connect(self._open_detail)
 
-        add_btn = QPushButton("افزودن حساب جدید")
+        add_btn = QPushButton("➕ افزودن حساب جدید")
         add_btn.setObjectName("primary")
         add_btn.clicked.connect(self.handle_add_new)
 
-        self.activate_btn = QPushButton("فعال‌سازی حساب")
+        self.activate_btn = QPushButton("✅ فعال‌سازی")
         self.activate_btn.clicked.connect(self.handle_activate)
 
-        self.deactivate_btn = QPushButton("غیرفعال‌سازی حساب")
+        self.deactivate_btn = QPushButton("⛔ غیرفعال‌سازی")
+        self.deactivate_btn.setStyleSheet(
+            "QPushButton { color: #f87171; border-color: rgba(239,68,68,0.45); }"
+            "QPushButton:hover { background: rgba(239,68,68,0.15); border-color: #ef4444; }")
         self.deactivate_btn.clicked.connect(self.handle_deactivate)
 
-        reset_pw_btn = QPushButton("ریست رمز عبور")
+        reset_pw_btn = QPushButton("🔑 ریست رمز")
         reset_pw_btn.clicked.connect(self.handle_reset_password)
-        edit_phone_btn = QPushButton("ویرایش تلفن")
+        edit_phone_btn = QPushButton("📞 ویرایش تلفن")
         edit_phone_btn.clicked.connect(self.handle_edit_phone)
-        rates_btn = QPushButton("درصد پورسانت")
+        rates_btn = QPushButton("٪ درصد پورسانت")
         rates_btn.clicked.connect(self.handle_set_rates)
-        refresh_btn = QPushButton("به‌روزرسانی")
+        refresh_btn = QPushButton("🔄 به‌روزرسانی")
         refresh_btn.clicked.connect(self.load_users)
 
-        # فعال/غیرفعال شدن دکمه‌ها بر اساس انتخاب فعلی
         self.table.itemSelectionChanged.connect(self._update_buttons)
 
         bar = QHBoxLayout()
@@ -233,27 +284,52 @@ class AgentCenterTab(QWidget):
         bar.addWidget(refresh_btn)
 
         lay = QVBoxLayout(self)
+        lay.addLayout(title_row)
+        lay.addSpacing(4)
         lay.addLayout(bar)
         lay.addWidget(self.table)
         self.load_users()
 
     def load_users(self):
+        TableSpinner.show(self.table)
         try:
             users = api_client.list_users()
         except ApiError as e:
+            TableSpinner.hide(self.table)
             handle_api_error(self, e, "خطا")
             return
+        TableSpinner.hide(self.table)
+
         self._users_by_row = users
+        counts = {"total": len(users), "admin": 0, "agent": 0, "inactive": 0}
+        for u in users:
+            counts["admin" if u["role"] == "admin" else "agent"] += 1
+            if not u.get("is_active"):
+                counts["inactive"] += 1
+        for key, chip in self._stat_chips.items():
+            chip.setText(chip.text().split(":")[0] + f": {counts.get(key, 0)}")
+
         self.table.setRowCount(len(users))
         for r, u in enumerate(users):
+            # آواتار رنگی + نام کامل
+            self.table.setItem(r, 0, _avatar_item(u["full_name"]))
+            self.table.setItem(r, 1, QTableWidgetItem(u["username"]))
+
+            role = u["role"]
+            role_item = QTableWidgetItem(f"● {self.ROLE_FA.get(role, role)}")
+            role_item.setForeground(QColor("#f5a623" if role == "admin" else "#7dd3fc"))
+            _rf = role_item.font(); _rf.setBold(True); role_item.setFont(_rf)
+            self.table.setItem(r, 2, role_item)
+
+            st_item = QTableWidgetItem("● فعال" if u["is_active"] else "● غیرفعال")
+            st_item.setForeground(QColor("#22c55e" if u["is_active"] else "#ef4444"))
+            self.table.setItem(r, 3, st_item)
+
+            self.table.setItem(r, 4, QTableWidgetItem(u.get("phone") or ""))
             rates = u.get("commission_rates") or {}
             rates_txt = " | ".join(f"{lbl} {rates.get(k, 0):g}٪" for k, lbl in RATE_LABELS) if rates else "—"
-            self.table.setItem(r, 0, QTableWidgetItem(u["username"]))
-            self.table.setItem(r, 1, QTableWidgetItem(u["full_name"]))
-            self.table.setItem(r, 2, QTableWidgetItem("مدیر" if u["role"] == "admin" else "مشاور"))
-            self.table.setItem(r, 3, QTableWidgetItem("بله" if u["is_active"] else "خیر"))
-            self.table.setItem(r, 4, QTableWidgetItem(u.get("phone") or ""))
             self.table.setItem(r, 5, QTableWidgetItem(rates_txt))
+            self.table.setItem(r, 6, QTableWidgetItem(str(u.get("files_count", "—"))))
         self._update_buttons()
 
     def _selected_user(self):
@@ -264,9 +340,8 @@ class AgentCenterTab(QWidget):
 
     def _open_detail(self):
         u = self._selected_user()
-        if not u:
-            return
-        AgentDetailDialog(u, on_changed=self.load_users).exec()
+        if u:
+            AgentDetailDialog(u, on_changed=self.load_users).exec()
 
     def handle_add_new(self):
         UserFormDialog(on_created=self.load_users).exec()

@@ -2,7 +2,6 @@
 """ویجت‌های عمومی: ارقام فارسی، تلفن، امکانات دلخواه، هایلایت جست‌وجو، چیپ فیلتر"""
 import re
 from html import escape
-
 from PySide6.QtCore import Qt, QRegularExpression, Signal
 from PySide6.QtGui import QValidator, QRegularExpressionValidator, QTextDocument, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -16,7 +15,8 @@ from number_to_words import money_to_words
 PERSIAN = "۰۱۲۳۴۵۶۷۸۹"
 ARABIC = "٠١٢٣٤٥٦٧٨٩"
 _TABLE = str.maketrans(PERSIAN + ARABIC, "0123456789" * 2)
-
+# رنگ‌های آواتار مشترک — همهٔ صفحات از این استفاده می‌کنند تا رنگ هر نفر ثابت بماند
+AVATAR_COLORS = ["#f5a623", "#7dd3fc", "#86efac", "#c4b5fd", "#fca5a5", "#2dd4bf", "#fdba74"]
 
 def to_english_digits(text: str) -> str:
     return (text or "").translate(_TABLE)

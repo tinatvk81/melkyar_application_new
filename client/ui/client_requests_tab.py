@@ -7,9 +7,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QColor
 from api_client import api_client, ApiError
 from session import handle_api_error
+from ui.spinner import TableSpinner
 from ui.property_form import DEAL_TYPE_LABELS, MoneyLineEdit, PersianSpinBox, PersianDoubleSpinBox, PropertyFormDialog
-
-from ui.widgets import PhoneLineEdit 
+from ui.widgets import AVATAR_COLORS
+from ui.widgets import PhoneLineEdit
 
 REQUEST_STATUS_FA = {
     "open": "🆕 جدید", "contacted": "📞 تماس شد", "visited": "🏠 بازدید رفت",
@@ -150,80 +151,125 @@ class MatchesDialog(QDialog):
         if 0 <= row < len(self._rows):
             PropertyFormDialog(property_data=self._rows[row], on_saved=self._load).exec()
 
-
 class ClientRequestsTab(QWidget):
-    """درخواست مشتری‌ها — مشاور فقط درخواست‌های خودش را می‌بیند؛ مدیر همه را."""
+    """درخواست مشتری‌ها — نوار آمار رنگی + آواتار مشتری + بج وضعیت."""
 
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
         self._rows = []
 
-        self.table = QTableWidget()
-        self.table.setColumnCount(8)
-        self.table.setHorizontalHeaderLabels(
-            ["#", "مشتری", "تلفن", "نوع", "شهر/منطقه", "متراژ", "بودجه", "وضعیت"]
-        )
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.doubleClicked.connect(lambda _: self._edit())
+        # --- نوار عنوان + چیپ‌های آماری ---
+        title_row = QHBoxLayout()
+        ttl = QLabel("🙋 درخواست مشتری‌ها")
+        ttl.setStyleSheet("font-size: 15px; font-weight: 800; color: #f5a623; background: transparent;")
+        title_row.addWidget(ttl)
+        title_row.addSpacing(18)
+        self._stat_chips = {}
+        for key in REQUEST_STATUS_FA:
+            chip = QLabel(f"{REQUEST_STATUS_FA[key]}: 0")
+            color = REQUEST_STATUS_COLORS.get(key, "#a5b4fc")
+            chip.setStyleSheet(
+                f"color: {color}; background: rgba(255,255,255,0.05);"
+                f"border: 1px solid {color}55; border-radius: 12px;"
+                "padding: 4px 12px; font-size: 11px; font-weight: bold;")
+            self._stat_chips[key] = chip
+            title_row.addWidget(chip)
+        title_row.addStretch()
 
-        add_btn = QPushButton("درخواست جدید")
+        # --- نوار دکمه‌ها ---
+        bar = QHBoxLayout()
+        add_btn = QPushButton("➕ درخواست جدید")
         add_btn.setObjectName("primary")
         add_btn.clicked.connect(lambda: ClientRequestDialog(on_saved=self.load_requests).exec())
+        bar.addWidget(add_btn)
         edit_btn = QPushButton("ویرایش")
         edit_btn.clicked.connect(self._edit)
-        matches_btn = QPushButton("فایل‌های منطبق")
+        bar.addWidget(edit_btn)
+        matches_btn = QPushButton("🎯 فایل‌های منطبق")
         matches_btn.clicked.connect(self._matches)
-
+        bar.addWidget(matches_btn)
         self.stage_combo = QComboBox()
         for v, l in REQUEST_STATUS_FA.items():
             self.stage_combo.addItem(l, v)
         stage_btn = QPushButton("ثبت مرحله")
         stage_btn.clicked.connect(self._set_stage)
-
-        del_btn = QPushButton("حذف")
-        del_btn.clicked.connect(self._delete)
-        refresh_btn = QPushButton("به‌روزرسانی")
-        refresh_btn.clicked.connect(self.load_requests)
-
-        bar = QHBoxLayout()
-        for b in (add_btn, edit_btn, matches_btn, del_btn):
-            bar.addWidget(b)
         bar.addWidget(QLabel("مرحله:"))
         bar.addWidget(self.stage_combo)
         bar.addWidget(stage_btn)
+        del_btn = QPushButton("🗑 حذف")
+        del_btn.setStyleSheet(
+            "QPushButton { color: #f87171; border-color: rgba(239,68,68,0.45); }"
+            "QPushButton:hover { background: rgba(239,68,68,0.15); border-color: #ef4444; }")
+        del_btn.clicked.connect(self._delete)
+        bar.addWidget(del_btn)
         bar.addStretch()
+        refresh_btn = QPushButton("🔄 به‌روزرسانی")
+        refresh_btn.clicked.connect(self.load_requests)
         bar.addWidget(refresh_btn)
 
+        # --- جدول ---
+        self.table = QTableWidget()
+        self.table.setColumnCount(8)
+        self.table.setHorizontalHeaderLabels(
+            ["#", "مشتری", "تلفن", "نوع", "شهر/منطقه", "متراژ", "بودجه", "وضعیت"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.verticalHeader().setVisible(False)
+        self.table.doubleClicked.connect(lambda _: self._edit())
+
         lay = QVBoxLayout(self)
+        lay.addLayout(title_row)
+        lay.addSpacing(4)
         lay.addLayout(bar)
         lay.addWidget(self.table)
         self.load_requests()
 
     def load_requests(self):
+        TableSpinner.show(self.table)
         try:
             self._rows = api_client.list_client_requests()
         except ApiError as e:
+            TableSpinner.hide(self.table)
             handle_api_error(self, e, "خطا")
             return
+        TableSpinner.hide(self.table)
+
+        # چیپ‌های آماری
+        counts = {}
+        for q in self._rows:
+            st = q.get("status", "open")
+            counts[st] = counts.get(st, 0) + 1
+        for key, chip in self._stat_chips.items():
+            chip.setText(f"{REQUEST_STATUS_FA.get(key, key)}: {counts.get(key, 0)}")
+
         self.table.setRowCount(len(self._rows))
         for r, q in enumerate(self._rows):
-            city = (q.get("city") or "—") + (f" / {q['district']}" if q.get("district") else "")
-            area = f"{q.get('min_area') or '—'} تا {q.get('max_area') or '—'}"
             self.table.setItem(r, 0, QTableWidgetItem(f"#{q['id']}"))
-            self.table.setItem(r, 1, QTableWidgetItem(q["customer_name"]))
-            self.table.setItem(r, 2, QTableWidgetItem(q.get("customer_phone") or ""))
+
+            name = q["customer_name"]
+            letter = (name or "?")[:1].upper()
+            color = AVATAR_COLORS[(len(name)) % len(AVATAR_COLORS)]
+            it = QTableWidgetItem(f"{letter}  {name}")
+            it.setForeground(QColor(color))
+            _f = it.font(); _f.setBold(True); it.setFont(_f)
+            self.table.setItem(r, 1, it)
+
+            self.table.setItem(r, 2, QTableWidgetItem(q.get("customer_phone") or "—"))
             self.table.setItem(r, 3, QTableWidgetItem(DEAL_TYPE_LABELS.get(q.get("deal_type"), q.get("deal_type", ""))))
+            city = (q.get("city") or "—") + (f" / {q['district']}" if q.get("district") else "")
             self.table.setItem(r, 4, QTableWidgetItem(city))
+            area = f"{q.get('min_area') or '—'} تا {q.get('max_area') or '—'}"
             self.table.setItem(r, 5, QTableWidgetItem(area))
             self.table.setItem(r, 6, QTableWidgetItem(f"{q['max_price']:,}" if q.get("max_price") else "—"))
             st = q.get("status", "open")
-            st_item = QTableWidgetItem(REQUEST_STATUS_FA.get(st, st))
+            st_item = QTableWidgetItem(f"● {REQUEST_STATUS_FA.get(st, st)}")
             st_item.setForeground(QColor(REQUEST_STATUS_COLORS.get(st, "#eceaf4")))
+            _sf = st_item.font(); _sf.setBold(True); st_item.setFont(_sf)
             self.table.setItem(r, 7, st_item)
 
+    # ---------- اکشن‌ها (بدون تغییر) ----------
     def _selected(self):
         row = self.table.currentRow()
         if 0 <= row < len(self._rows):

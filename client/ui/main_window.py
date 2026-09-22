@@ -33,7 +33,7 @@ from ui.property_filter_panel import PropertyFilterPanel
 from ui.property_gallery_dialog import PropertyGalleryDialog
 from ui.dashboard_tab import DashboardTab
 from ui.deals_tab import DealsTab
-from PySide6.QtGui import QKeySequence, QShortcut, QColor
+from PySide6.QtGui import QKeySequence, QShortcut, QColor, QPixmap
 from ui.archive_tab import ArchiveTab
 from ui.agent_center_tab import AgentCenterTab
 

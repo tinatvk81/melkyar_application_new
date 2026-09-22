@@ -4,9 +4,11 @@ from PySide6.QtWidgets import (
     QLabel, QComboBox, QMessageBox, QDialog, QFormLayout, QLineEdit, QTextEdit,
     QHeaderView, QAbstractItemView, QTimeEdit, QCheckBox,
 )
-
+from PySide6.QtGui import QColor
+from ui.spinner import TableSpinner
 from api_client import api_client, ApiError
 from session import handle_api_error
+from ui.jalali_util import to_jalali_str
 from ui.jalali_date_edit import JalaliDateEdit
 from ui.property_form import PropertyFormDialog
 
@@ -320,86 +322,145 @@ class StaleFilesDialog(QDialog):
 
 
 class FollowUpsTab(QWidget):
-    """پیگیری روزمره — مشاور فقط کارهای خودش؛ مدیر همه را می‌بیند."""
+    """پیگیری روزمره — نوار آمار رنگی + جدول بج‌دار، مثل طرح."""
 
     FILTERS = [("overdue", "⚠️ عقب‌افتاده"), ("today", "📌 امروز"),
                ("upcoming", "آینده"), ("done", "انجام‌شده"), ("all", "همه")]
+
+    STATUS_FA = {"pending": "در انتظار", "done": "انجام شد", "canceled": "لغو"}
+    STATUS_COLORS = {"pending": "#7dd3fc", "done": "#22c55e", "canceled": "#ef4444"}
 
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
         self._rows = []
 
+        # --- نوار عنوان: «✅ پیگیری روزمره» + چیپ‌های آماری (پر می‌شوند در load_items) ---
+        title_row = QHBoxLayout()
+        ttl = QLabel("✅ پیگیری روزمره")
+        ttl.setStyleSheet("font-size: 15px; font-weight: 800; color: #f5a623; background: transparent;")
+        title_row.addWidget(ttl)
+        title_row.addSpacing(18)
+        self._stat_chips = {}
+        for key, color in [("pending", "#7dd3fc"), ("done", "#22c55e"), ("canceled", "#ef4444")]:
+            chip = QLabel(f"{self.STATUS_FA[key]}: 0")
+            chip.setStyleSheet(
+                f"color: {color}; background: rgba(255,255,255,0.05);"
+                f"border: 1px solid {color}55; border-radius: 12px; padding: 4px 12px;"
+                "font-size: 11px; font-weight: bold;")
+            self._stat_chips[key] = chip
+            title_row.addWidget(chip)
+        title_row.addStretch()
+
+        # --- نوار دکمه‌ها ---
+        bar = QHBoxLayout()
+        bar.addWidget(QLabel("نمایش:"))
         self.filter_combo = QComboBox()
         for value, label in self.FILTERS:
             self.filter_combo.addItem(label, value)
         self.filter_combo.currentIndexChanged.connect(self.load_items)
+        bar.addWidget(self.filter_combo)
+        bar.addSpacing(10)
 
-        add_btn = QPushButton("پیگیری جدید")
+        add_btn = QPushButton("➕ پیگیری جدید")
         add_btn.setObjectName("primary")
         add_btn.clicked.connect(lambda: FollowUpDialog(on_saved=self.load_items).exec())
+        bar.addWidget(add_btn)
+
         edit_btn = QPushButton("ویرایش")
         edit_btn.clicked.connect(self._edit)
-        done_btn = QPushButton("✔ انجام شد")
-        done_btn.clicked.connect(self._done)
-        open_prop_btn = QPushButton("باز کردن فایل مرتبط")
+        bar.addWidget(edit_btn)
+
+        open_prop_btn = QPushButton("📂 باز کردن فایل مرتبط")
         open_prop_btn.clicked.connect(self._open_property)
-        del_btn = QPushButton("حذف")
-        del_btn.clicked.connect(self._delete)
-        refresh_btn = QPushButton("به‌روزرسانی")
-        refresh_btn.clicked.connect(self.load_items)
+        bar.addWidget(open_prop_btn)
 
         stale_btn = QPushButton("📋 فایل‌های کهنه")
         stale_btn.clicked.connect(self._open_stale)
-
-        bar = QHBoxLayout()
-        bar.addWidget(QLabel("نمایش:"))
-        bar.addWidget(self.filter_combo)
-        bar.addWidget(add_btn)
-        bar.addWidget(edit_btn)
-        bar.addWidget(done_btn)
-        bar.addWidget(open_prop_btn)
         bar.addWidget(stale_btn)
+
+        del_btn = QPushButton("🗑 حذف")
+        del_btn.setStyleSheet(
+            "QPushButton { color: #f87171; border-color: rgba(239,68,68,0.45); }"
+            "QPushButton:hover { background: rgba(239,68,68,0.15); border-color: #ef4444; }")
+        del_btn.clicked.connect(self._delete)
         bar.addWidget(del_btn)
+
         bar.addStretch()
+        refresh_btn = QPushButton("🔄 به‌روزرسانی")
+        refresh_btn.clicked.connect(self.load_items)
         bar.addWidget(refresh_btn)
 
+        # --- جدول ---
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["عنوان", "سررسید", "وضعیت", "فایل مرتبط", "توضیحات"])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(
+            ["#", "عنوان", "سررسید", "وضعیت", "فایل مرتبط", "توضیحات"])
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.verticalHeader().setVisible(False)
         self.table.doubleClicked.connect(lambda _: self._edit())
 
         lay = QVBoxLayout(self)
+        lay.addLayout(title_row)
+        lay.addSpacing(4)
         lay.addLayout(bar)
         lay.addWidget(self.table)
+
         self.filter_combo.setCurrentIndex(self.filter_combo.findData("all"))
         self.load_items()
 
-
-    def _open_stale(self):
-        StaleFilesDialog(
-            on_open_property=lambda p: PropertyFormDialog(property_data=p, on_saved=self.load_items).exec()
-        ).exec()
-        
+    # ---------- داده ----------
     def load_items(self):
+        TableSpinner.show(self.table)
         try:
             self._rows = api_client.list_follow_ups(when=self.filter_combo.currentData())
         except ApiError as e:
+            TableSpinner.hide(self.table)
             handle_api_error(self, e, "خطا")
             return
+        TableSpinner.hide(self.table)
+
+        # چیپ‌های آماری
+        counts = {"pending": 0, "done": 0, "canceled": 0}
+        for f in self._rows:
+            st = f.get("status")
+            if st in counts:
+                counts[st] += 1
+        for key, chip in self._stat_chips.items():
+            chip.setText(f"{self.STATUS_FA[key]}: {counts[key]}")
+
         self.table.setRowCount(len(self._rows))
         for r, f in enumerate(self._rows):
-            due = (f.get("due_date") or "—") + (f" {f['due_time']}" if f.get("due_time") else "")
-            self.table.setItem(r, 0, QTableWidgetItem(f["title"]))
-            self.table.setItem(r, 1, QTableWidgetItem(due))
-            self.table.setItem(r, 2, QTableWidgetItem(STATUS_FA.get(f.get("status"), f.get("status", ""))))
-            self.table.setItem(r, 3, QTableWidgetItem(f"#{f['property_id']}" if f.get("property_id") else "—"))
-            self.table.setItem(r, 4, QTableWidgetItem(f.get("description") or ""))
+            self.table.setItem(r, 0, QTableWidgetItem(str(r + 1)))
 
+            self.table.setItem(r, 1, QTableWidgetItem(f["title"]))
+
+            due = (f.get("due_date") or "—")
+            due_txt = to_jalali_str(f.get("due_date")) if f.get("due_date") else "—"
+            if f.get("due_time"):
+                due_txt += f" — {f['due_time']}"
+            self.table.setItem(r, 2, QTableWidgetItem(due_txt))
+
+            st = f.get("status", "pending")
+            st_item = QTableWidgetItem(f"● {self.STATUS_FA.get(st, st)}")
+            st_item.setForeground(QColor(self.STATUS_COLORS.get(st, "#eceaf4")))
+            _f = st_item.font(); _f.setBold(True); st_item.setFont(_f)
+            self.table.setItem(r, 3, st_item)
+
+            if f.get("property_id"):
+                chip = QTableWidgetItem(f"🔖 MLK-{f['property_id']:04d}")
+                chip.setForeground(QColor("#7dd3fc"))
+                _cf = chip.font(); _cf.setBold(True); chip.setFont(_cf)
+            else:
+                chip = QTableWidgetItem("—")
+            self.table.setItem(r, 4, chip)
+
+            self.table.setItem(r, 5, QTableWidgetItem(f.get("description") or ""))
+
+    # ---------- اکشن‌ها ----------
     def _selected(self):
         row = self.table.currentRow()
         if 0 <= row < len(self._rows):
@@ -450,3 +511,8 @@ class FollowUpsTab(QWidget):
             QMessageBox.information(self, "توجه", "فایل مرتبط پیدا نشد (شاید غیرفعال یا فروخته شده باشد).")
             return
         PropertyFormDialog(property_data=prop, on_saved=self.load_items).exec()
+
+    def _open_stale(self):
+        StaleFilesDialog(
+            on_open_property=lambda p: PropertyFormDialog(property_data=p, on_saved=self.load_items).exec()
+        ).exec()
