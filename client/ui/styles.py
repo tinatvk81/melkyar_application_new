@@ -33,6 +33,8 @@ QTableWidget { background: #0e1019; alternate-background-color: rgba(255,255,255
 QTableWidget::item { padding: 6px; }
 QTableWidget::item:selected { background: rgba(245,166,35,0.32); }
 QScrollArea { background: #0e1019; border: none; }
+QScrollArea > QWidget#qt_scrollarea_viewport { background: #0e1019; }
+QScrollArea > QWidget > QWidget { background: transparent; }
 QAbstractScrollArea::corner { background: #0e1019; }
 QHeaderView { background: #0e1019; }
 QHeaderView::section { background: rgba(255,255,255,0.06); border: none; border-bottom: 2px solid rgba(245,166,35,0.45); padding: 8px; }
@@ -95,6 +97,8 @@ QTableWidget { background: #ffffff; alternate-background-color: #f7f8fc; gridlin
 QTableWidget::item { padding: 6px; }
 QTableWidget::item:selected { background: rgba(245,166,35,0.35); }
 QScrollArea { background: #f4f6fb; border: none; }
+QScrollArea > QWidget#qt_scrollarea_viewport { background: #f4f6fb; }
+QScrollArea > QWidget > QWidget { background: transparent; }
 QAbstractScrollArea::corner { background: #f4f6fb; }
 QHeaderView { background: #eef1f8; }
 QHeaderView::section { background: #eef1f8; border: none; border-bottom: 2px solid rgba(245,166,35,0.55); padding: 8px; }

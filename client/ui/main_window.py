@@ -47,8 +47,8 @@ class PropertyListTab(QWidget):
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
-        self._properties_by_row = []  # برای پیدا کردن دیتای کامل هنگام دابل‌کلیک برای ویرایش
-        self._current_filters = {}  # آخرین فیلتری که اعمال شده (برای استفاده در export هم)
+        self._properties_by_row = []  
+        self._current_filters = {} 
         self._current_page = 1
         self._total_pages = 1
 
@@ -64,10 +64,10 @@ class PropertyListTab(QWidget):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
 
-        header.setSectionResizeMode(9, QHeaderView.Stretch)   # آدرس
+        header.setSectionResizeMode(9, QHeaderView.Stretch)  
         header.setSectionResizeMode(1, QHeaderView.Fixed)
         self.table.setColumnWidth(1, 64)
-        header.setSectionResizeMode(0, QHeaderView.Fixed)     # ستاره
+        header.setSectionResizeMode(0, QHeaderView.Fixed)    
         self.table.setColumnWidth(0, 44)
         self.table.verticalHeader().setDefaultSectionSize(56)
         # ظاهر مینیمال: بدون خط عمودی، فقط جداکنندهٔ افقی نازک (مثل طرح جدید)
@@ -112,8 +112,6 @@ class PropertyListTab(QWidget):
         export_excel_btn = QPushButton("خروجی اکسل")
         export_excel_btn.clicked.connect(self.handle_export_excel)
 
-        # archive_btn = QPushButton("آرشیو فایل‌های غیرفعال")
-        # archive_btn.clicked.connect(self.handle_open_archive)
 
         refresh_btn = QPushButton("به‌روزرسانی فهرست")
         refresh_btn.clicked.connect(self.load_properties)
@@ -122,6 +120,15 @@ class PropertyListTab(QWidget):
         self.contact_btn.setToolTip("کپی شماره، واتساپ مالک، یا باز کردن نقشه‌ی آدرس فایل انتخاب‌شده")
         self.contact_btn.clicked.connect(self._show_contact_menu)
 
+        # دکمه‌ها در دو ردیف + متن کوتاه — حداقل عرض را نصف می‌کند تا روی
+        # لپ‌تاپ‌های کم‌عرض، پنجره از اندازهٔ صفحه بیرون نزند
+        add_btn.setText("➕ فایل جدید")
+        edit_btn.setText("✏️ ویرایش")
+        deactivate_btn.setText("⛔ غیرفعال")
+        import_btn.setText("📥 ایمپورت اکسل")
+        export_pdf_btn.setText("📄 PDF")
+        export_excel_btn.setText("📊 اکسل")
+        refresh_btn.setText("🔄 به‌روزرسانی")
 
         top_bar = QHBoxLayout()
         top_bar.addWidget(add_btn)
@@ -131,14 +138,16 @@ class PropertyListTab(QWidget):
         top_bar.addWidget(deactivate_btn)
         top_bar.addWidget(import_btn)
         top_bar.addWidget(self.contact_btn)
-        top_bar.addWidget(export_pdf_btn)
-        top_bar.addWidget(export_excel_btn)
-        # top_bar.addWidget(archive_btn)
         top_bar.addStretch()
         top_bar.addWidget(refresh_btn)
-        view_img_btn = QPushButton("پیش‌نمایش عکس")
+
+        top_bar2 = QHBoxLayout()
+        top_bar2.addWidget(export_pdf_btn)
+        top_bar2.addWidget(export_excel_btn)
+        view_img_btn = QPushButton("🖼 عکس‌ها")
         view_img_btn.clicked.connect(self.handle_view_images)
-        top_bar.addWidget(view_img_btn)
+        top_bar2.addWidget(view_img_btn)
+        top_bar2.addStretch()
 
         # --- نوار صفحه‌بندی: بدون این، فایل‌های بعد از یک تعداد مشخص بی‌صدا از دید پنهان می‌ماندند ---
         self.prev_page_btn = QPushButton("◀ صفحه‌ی قبل")
@@ -191,14 +200,15 @@ class PropertyListTab(QWidget):
         self._filter_wrap.setWidget(self.filter_panel)
         _scr = QApplication.primaryScreen().availableGeometry()
         self._filter_wrap.setMaximumHeight(int(_scr.height() * 0.42))
-        self.filter_panel.setMaximumWidth(1250)   # پنل روی مانیتور عریض بی‌نهایت کشیده نشود
+        self.filter_panel.setMaximumWidth(1250) 
 
         layout = QVBoxLayout()
         layout.addLayout(search_row)
         layout.addLayout(tools_row)
         layout.addWidget(self._filter_wrap)
         layout.addLayout(top_bar)
-        layout.addWidget(self.table, 1)      # جدول اولویتِ فضای اضافه را می‌گیرد
+        layout.addLayout(top_bar2)
+        layout.addWidget(self.table, 1)     
         layout.addWidget(self.card_view, 1)
         layout.addLayout(pagination_bar)
         self.setLayout(layout)
