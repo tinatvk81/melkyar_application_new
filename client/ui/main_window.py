@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
     QFileDialog, QComboBox, QHeaderView, QStackedWidget, QFrame, QAbstractItemView,QScrollArea
 )
+from config import APP_VERSION
 from PySide6.QtWidgets import QSizePolicy
 from collections import Counter
 from PySide6.QtCore import Signal
@@ -992,7 +993,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
-        self.setWindowTitle(f"سامانه‌ی مدیریت فایل‌های ملکی — {api_client.full_name}")
+        self.setWindowTitle(f"سامانه‌ی مدیریت فایل‌های ملکی — {api_client.full_name} — v{APP_VERSION}")
         self.resize(1150, 720)
 
         # --- سه دکمهٔ آیکونی کنار هم: اطلاع‌یه / تم / تنظیمات ---

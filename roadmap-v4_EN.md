@@ -35,7 +35,7 @@ migration from "office server / WSL" to Runflare cloud hosting.
 - Database never exposed to the internet; only the API
 - PyPI mirror (Tsinghua) in the Dockerfile — direct PyPI unreachable from Iranian networks
 
-## Part B — 20 new v1.4 features ✅
+## Part B — 20 new v1.5 features ✅
 
 1. **Price & per-m² columns** — server builds `price_display`/`price_per_m2_display` (deal-type aware); table and cards share one source
 2. **Card price badge** — correct rent format ("deposit X / rent Y")

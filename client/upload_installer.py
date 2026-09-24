@@ -88,7 +88,7 @@ def main():
     print()
     print("=== ✅ آپلود کامل شد ===")
     print("تست دانلود:")
-    print(f"  {HOST}/static-installers/RealEstateApp-Setup-1.4.0.exe")
+    print(f"  {HOST}/static-installers/RealEstateApp-Setup-1.5.0.exe")
     input("Enter برای بستن...")
 
 

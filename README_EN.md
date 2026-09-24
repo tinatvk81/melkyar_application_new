@@ -106,7 +106,7 @@ cd melkyar
 # Environment variables (panel or .env):
 #   POSTGRES_HOST / PORT / DB / USER / PASSWORD
 #   SECRET_KEY (long & random), DEBUG=false
-#   APP_VERSION=1.4.0, INSTALLER_FILENAME=RealEstateApp-Setup-1.4.0.exe
+#   APP_VERSION=1.5.0, INSTALLER_FILENAME=RealEstateApp-Setup-1.5.0.exe
 
 docker compose up -d --build
 docker compose exec server alembic upgrade head

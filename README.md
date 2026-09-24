@@ -111,8 +111,8 @@ cd melkyar
 #   POSTGRES_HOST / POSTGRES_PORT / POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
 #   SECRET_KEY  (تصادفی و طولانی)
 #   DEBUG=false
-#   APP_VERSION=1.4.0
-#   INSTALLER_FILENAME=RealEstateApp-Setup-1.4.0.exe
+#   APP_VERSION=1.5.0
+#   INSTALLER_FILENAME=RealEstateApp-Setup-1.5.0.exe
 
 docker compose up -d --build      # db + server
 docker compose exec server alembic upgrade head          # جداول
