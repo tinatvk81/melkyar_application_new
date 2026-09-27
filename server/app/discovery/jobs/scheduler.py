@@ -3,6 +3,11 @@ import logging
 import time
 from datetime import datetime, timedelta, timezone
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
 from app.db.session import SessionLocal
 from app.discovery.adapters.divar import DivarAdapter
 from app.discovery.adapters.sheypoor import SheypoorAdapter
@@ -12,13 +17,13 @@ from app.discovery.services.dedupe import upsert_listing
 logger = logging.getLogger(__name__)
 
 ADAPTERS = [DivarAdapter(), SheypoorAdapter()]
-CITY = "mashhad"   # شهر فعلی ملک‌یاب — در فاز اشتراک‌ها از تنظیمات می‌آید
+CITY = "mashhad"
 POLL_INTERVAL_SECONDS = 600
 
 
 def run_one_source(adapter, db):
     try:
-        # فعلاً ۱۴ روز تا اولین پرشدن دیتابیس؛ بعد از تست موفق به timedelta(minutes=30) تغییرش بده
+        # فعلاً ۱۴ روز برای پرشدن اولیه؛ بعد از تست موفق به timedelta(minutes=30) تغییر بده
         since = datetime.now(timezone.utc) - timedelta(days=14)
         raw_listings = adapter.fetch_new(city=CITY, category="real-estate", since=since)
         new_count = 0
@@ -47,7 +52,7 @@ def run_one_source(adapter, db):
         logger.info(f"[{adapter.source_name}] {new_count} آگهی جدید از {len(raw_listings)} دریافتی")
     except Exception:
         db.rollback()
-        logger.exception(f"[{adapter.source_name}] خطا در دریافت — این منبع رد شد، بقیه ادامه می‌دن")
+        logger.exception(f"[{adapter.source_name}] خطا در دریافت — این منبع رد شد")
 
 
 def main_loop():

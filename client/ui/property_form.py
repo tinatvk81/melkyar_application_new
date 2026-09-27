@@ -37,10 +37,11 @@ class PropertyFormDialog(QDialog):
     on_saved: تابعی که بعد از ذخیره‌ی موفق صدا زده می‌شود (برای رفرش فهرست).
     """
 
-    def __init__(self, property_data: dict | None, on_saved):
+    def __init__(self, property_data: dict | None, on_saved, prefill: dict | None = None):
         super().__init__()
         self.property_data = property_data
         self.on_saved = on_saved
+        self._discovery_listing_id = None
         self.setLayoutDirection(Qt.RightToLeft)
         self.setWindowTitle("ویرایش فایل" if property_data else "افزودن فایل جدید")
         self.resize(480, 620)
@@ -52,6 +53,8 @@ class PropertyFormDialog(QDialog):
         self._build_ui()
         if property_data:
             self._fill_from_existing()
+        elif prefill:
+            self._apply_prefill(prefill)
         else:
             self._on_deal_type_changed(self.deal_type_combo.currentData())
 
@@ -236,6 +239,34 @@ class PropertyFormDialog(QDialog):
             self.price_per_m2_label.setText("—")
 
     # ---------------------------------------------------------- Fill / Save
+    def _apply_prefill(self, d: dict):
+        """پرکردن فرم فایل جدید از روی یک آگهی ملک‌یاب — مشاور چک/تکمیل می‌کند و ذخیره."""
+        deal_type = d.get("deal_type") or "sale"
+        # اجاره بدون اجاره‌ماهانه = رهن کامل (مطابق منطق سرور)
+        if deal_type == "rent" and not d.get("monthly_rent") and d.get("deposit"):
+            deal_type = "mortgage"
+        idx = self.deal_type_combo.findData(deal_type)
+        if idx >= 0:
+            self.deal_type_combo.setCurrentIndex(idx)
+
+        city = d.get("city") or DEFAULT_CITY
+        self.geo_city.set_city(city)
+        self.geo_district.set_value(d.get("district") or "", city)
+        self.area_input.setValue(d.get("area_m2") or 0)
+        self.rooms_input.setValue(d.get("rooms") or 0)
+
+        if deal_type == "sale":
+            self.price_input.set_value(d.get("price"))
+        elif deal_type == "rent":
+            self.deposit_input.set_value(d.get("deposit"))
+            self.monthly_rent_input.set_value(d.get("monthly_rent"))
+        elif deal_type == "mortgage":
+            self.deposit_full_input.set_value(d.get("deposit"))
+
+        self.notes_input.setPlainText(d.get("source_note") or "")
+        self._discovery_listing_id = d.get("listing_id")
+
+
     def _fill_from_existing(self):
         p = self.property_data
         idx = self.deal_type_combo.findData(p["deal_type"])
@@ -397,6 +428,12 @@ class PropertyFormDialog(QDialog):
             return
 
         Toast.show("✅ فایل ذخیره شد — برای افزودن عکس از «گالری تصاویر» استفاده کن")
+
+        if created and self._discovery_listing_id:
+            try:
+                api_client.dismiss_discovery_listing(self._discovery_listing_id, property_id=created["id"])
+            except ApiError:
+                pass
 
         if created:
             try:
