@@ -31,7 +31,11 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
+      
   server:
     build: ./server
     restart: unless-stopped
@@ -56,7 +60,9 @@ services:
       - ./server/static_installers:/app/static_installers
       - ./server/contract_template.txt:/app/contract_template.txt:ro
       - ./server/alembic/versions:/app/alembic/versions
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
-      
 volumes:
   db_data:

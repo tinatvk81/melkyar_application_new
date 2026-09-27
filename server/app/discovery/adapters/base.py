@@ -17,3 +17,11 @@ class RawListing:
     area_m2: int | None = None
     rooms: int | None = None
     attributes: dict | None = None
+
+
+class SourceAdapter(ABC):
+    source_name: str
+
+    @abstractmethod
+    def fetch_new(self, city: str, category: str, since: datetime) -> list[RawListing]:
+        ...

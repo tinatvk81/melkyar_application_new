@@ -1,3 +1,13 @@
+from datetime import datetime, timezone
+from sqlalchemy.orm import Session
+
+from app.models.property import Property, DealType
+from app.discovery.models.listing import DiscoveredListing
+from app.discovery.models.neighborhood import DiscoveryNeighborhood
+
+DEAL_TYPE_MAP = {"sale": DealType.sale, "rent": DealType.rent, "mortgage": DealType.mortgage}
+
+
 def build_property_from_listing(listing: DiscoveredListing, db: Session, owner_agent_id: int) -> Property:
     deal_type = DEAL_TYPE_MAP.get(listing.deal_type, DealType.sale)
 

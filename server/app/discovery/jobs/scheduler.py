@@ -12,13 +12,15 @@ from app.discovery.services.dedupe import upsert_listing
 logger = logging.getLogger(__name__)
 
 ADAPTERS = [DivarAdapter(), SheypoorAdapter()]
+CITY = "mashhad"   # شهر فعلی ملک‌یاب — در فاز اشتراک‌ها از تنظیمات می‌آید
 POLL_INTERVAL_SECONDS = 600
 
 
 def run_one_source(adapter, db):
     try:
-        since = datetime.now(timezone.utc) - timedelta(days=14)  # موقت برای تست اول
-        raw_listings = adapter.fetch_new(city="mashhad", category="real-estate", since=since)
+        # فعلاً ۱۴ روز تا اولین پرشدن دیتابیس؛ بعد از تست موفق به timedelta(minutes=30) تغییرش بده
+        since = datetime.now(timezone.utc) - timedelta(days=14)
+        raw_listings = adapter.fetch_new(city=CITY, category="real-estate", since=since)
         new_count = 0
         for raw in raw_listings:
             neighborhood_id = match_neighborhood(raw.raw_address or raw.title, db)
@@ -27,7 +29,7 @@ def run_one_source(adapter, db):
                 "external_id": raw.external_id,
                 "title": raw.title,
                 "raw_address": raw.raw_address,
-                "city": city,
+                "city": CITY,
                 "price": raw.price,
                 "deposit": raw.deposit,
                 "monthly_rent": raw.monthly_rent,
@@ -44,6 +46,7 @@ def run_one_source(adapter, db):
                 new_count += 1
         logger.info(f"[{adapter.source_name}] {new_count} آگهی جدید از {len(raw_listings)} دریافتی")
     except Exception:
+        db.rollback()
         logger.exception(f"[{adapter.source_name}] خطا در دریافت — این منبع رد شد، بقیه ادامه می‌دن")
 
 
