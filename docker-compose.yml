@@ -15,6 +15,23 @@ services:
       timeout: 5s
       retries: 5
 
+
+  discovery-worker:
+    build: ./server
+    command: python -m app.discovery.jobs.scheduler
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: melkyar
+      POSTGRES_USER: melkyar_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY}
+      DEBUG: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   server:
     build: ./server
     restart: unless-stopped
@@ -38,6 +55,8 @@ services:
       - ./server/logs:/app/logs
       - ./server/static_installers:/app/static_installers
       - ./server/contract_template.txt:/app/contract_template.txt:ro
+      - ./server/alembic/versions:/app/alembic/versions
 
+      
 volumes:
   db_data:

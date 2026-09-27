@@ -762,4 +762,30 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
+
+# ---------- ملک‌یاب (Discovery) ----------
+def list_discovered_listings(self, only_new: bool = True):
+    resp = self._get(
+        f"{self.server_url}/discovery/listings",
+        params={"only_new": only_new}, headers=self._headers, timeout=15,
+    )
+    self._raise_for_status(resp)
+    return resp.json()
+
+def convert_discovery_listing(self, listing_id: int):
+    resp = self._post(
+        f"{self.server_url}/discovery/listings/{listing_id}/convert-to-file",
+        headers=self._headers, timeout=15,
+    )
+    self._raise_for_status(resp)
+    return resp.json()
+
+def dismiss_discovery_listing(self, listing_id: int):
+    resp = self._post(
+        f"{self.server_url}/discovery/listings/{listing_id}/dismiss",
+        headers=self._headers, timeout=15,
+    )
+    self._raise_for_status(resp)
+    return resp.json()
+    
 api_client = ApiClient()  # نمونه‌ی مشترک در کل برنامه‌ی کلاینت

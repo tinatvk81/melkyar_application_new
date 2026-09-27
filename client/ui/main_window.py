@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QPushButton, QHBoxLayout, QMessageBox, QInputDialog, QLineEdit,
     QFileDialog, QComboBox, QHeaderView, QStackedWidget, QFrame, QAbstractItemView,QScrollArea
 )
+from ui.discovery_tab import DiscoveryTab
 from config import APP_VERSION
 from PySide6.QtWidgets import QSizePolicy
 from collections import Counter
@@ -1044,6 +1045,7 @@ class MainWindow(QMainWindow):
             ("🏢  فهرست فایل‌ها", self._list_tab, "list"),
             ("📅  قراردادهای رو‌به‌اتمام", RenewalsTab(), "renewals"),
             ("🗄️  بایگانی", ArchiveTab(), "archive"),
+            ("📡  یافته‌های ملک‌یاب", None, "discovery"),   # ← خط جدید (lazy)
             ("🙋  درخواست مشتری‌ها", ClientRequestsTab(), "requests"),
             ("✅  پیگیری روزمره", FollowUpsTab(), "followups"),
             ("💬  گفت‌وگو", ChatTab(), "chat"),
@@ -1062,6 +1064,7 @@ class MainWindow(QMainWindow):
             "deals": lambda: DealsTab(),
             "activity": lambda: ActivityLogTab(),
             "myledger": lambda: MyLedgerTab(),
+            "discovery": lambda: DiscoveryTab(),   
         }
 
         for label, widget, key in pages:

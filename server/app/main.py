@@ -13,6 +13,9 @@ from app.api.routes import (
     reports, activity_logs, deals, client_requests, follow_ups,
     notifications, filter_presets, chat, bot, installers, backups,
 )
+from app.discovery.api.routes.listings import router as discovery_router
+
+
 app = FastAPI(
     title="سامانه‌ی مدیریت فایل‌های ملکی",
     # مستندات خودکار API فقط در حالت توسعه (DEBUG=true در .env) فعال است —
@@ -45,6 +48,7 @@ app.include_router(filter_presets.router)
 app.include_router(chat.router)
 app.include_router(installers.router)
 app.include_router(backups.router)
+app.include_router(discovery_router)
 # پوشه‌ای که نصب‌کننده‌های exe نسخه‌های جدید در آن قرار می‌گیرند (بخش ۸ روادمپ)
 app.mount("/static-installers", StaticFiles(directory="static_installers"), name="static-installers")
 

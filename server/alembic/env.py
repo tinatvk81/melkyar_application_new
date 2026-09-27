@@ -1,4 +1,5 @@
 import os
+from app.db.base import Base
 import sys
 from logging.config import fileConfig
 from app.models import user,chat_message,bot_faq, property, property_image, activity_log, deal, client_request, follow_up, notification  # noqa: F401
@@ -11,10 +12,9 @@ from alembic import context
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.core.config import settings
-from app.db.base import Base
 # ایمپورت همه‌ی مدل‌ها ضروری است تا Alembic بتواند جدول‌هایشان را در autogenerate ببیند
 from app.models import user, property, property_image, activity_log, deal  # noqa: F401
-
+from app.discovery.models import listing, neighborhood, notification_log 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
