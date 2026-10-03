@@ -1,5 +1,6 @@
-"""دریافت جزئیات هر آگهی دیوار (بدون شماره تماس — آن پشت honeypot است و عمداً اتومات نمی‌گیریم)."""
+"""دریافت جزئیات هر آگهی دیوار — بدون شماره تماس (پشت honeypot است؛ عمداً اتومات نمی‌گیریم)."""
 import logging
+import re
 
 import requests
 
@@ -9,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 DETAILS_URL = "https://api.divar.ir/v8/posts-v2/web/{token}"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+_ADVERTISER_STRIP = re.compile(r"^(مشاور|آژانس|املاک|بنگاه|دپارتمان|کارگزاری)\s+")
 
 
 def fetch_details(token: str) -> dict | None:
@@ -31,8 +34,17 @@ def _walk(node):
             yield from _walk(v)
 
 
+def _extract_advertiser(bottom: str) -> str | None:
+    """از متن «نام در محله» → نام آگهی‌دهنده (فقط وقتی دیوار نام را نمایش داده باشد)."""
+    t = (bottom or "").strip()
+    if " در " not in t:
+        return None
+    name = t.split(" در ", 1)[0].strip()
+    name = _ADVERTISER_STRIP.sub("", name).strip(" -ـ")
+    return name if len(name) >= 3 else None
+
+
 def enrich_from_payload(listing, payload: dict) -> None:
-    """استخراج دفاعی: ردیف‌های title/value، توضیحات، ویژگی‌ها — بدون وابستگی به فرمت دقیق."""
     rows, features, description = [], [], ""
     for w in _walk(payload.get("sections") or []):
         wt = w.get("widget_type") or ""
@@ -74,7 +86,6 @@ def enrich_from_payload(listing, payload: dict) -> None:
     if v:
         attrs["floor"] = v
 
-    # ودیعه/اجارهٔ قابل‌تبدیل (اگهی اجارهٔ بدون قیمت در لیست)
     if listing.deal_type == "rent":
         dep = row_value("ودیعه")
         rent = row_value("اجاره")
@@ -90,6 +101,10 @@ def enrich_from_payload(listing, payload: dict) -> None:
     if description:
         attrs["description"] = description
     attrs["details_rows"] = rows
-    attrs["has_details"] = True
 
+    adv = _extract_advertiser(attrs.get("bottom") or "")
+    if adv:
+        attrs["advertiser"] = adv
+
+    attrs["has_details"] = True
     listing.attributes = attrs

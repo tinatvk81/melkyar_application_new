@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QHeaderView, QAbstractItemView, QDialog, QFormLayout,
     QComboBox, QCheckBox, QListWidget, QListWidgetItem, QMessageBox, QTextEdit,
 )
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 
 from api_client import api_client, ApiError
 from session import handle_api_error
@@ -23,6 +23,24 @@ TABLE_QSS = (
     "QHeaderView::section { font-size: 13px; padding: 8px; }"
 )
 
+PHONE_WARN = ("شمارهٔ تماس مالک در ملک‌یاب ذخیره نمی‌شود (دیوار آن را پشت «اطلاعات تماس» مخفی می‌کند).\n\n"
+              "ترتیب پیشنهادی:\n"
+              "۱) «باز کردن در دیوار» را بزن\n۲) «اطلاعات تماس» → شماره را بردار\n"
+              "۳) برگرد و «افزودن با فرم» بزن و شماره را در «تلفن مالک» بنویس\n\n"
+              "اگر بدون شماره اضافه کنی، بعداً باید از «فهرست فایل‌ها» پیدایش کنی و تکمیلش کنی.")
+
+
+def _warn_phone(parent) -> bool:
+    """True = کاربر فهمید و ادامه می‌دهد."""
+    box = QMessageBox(parent)
+    box.setWindowTitle("یادآوری: شمارهٔ تماس")
+    box.setIcon(QMessageBox.Warning)
+    box.setText(PHONE_WARN)
+    box.addButton("متوجه شدم — ادامه", QMessageBox.AcceptRole)
+    box.addButton("انصراف", QMessageBox.RejectRole)
+    box.exec()
+    return box.clickedButton() is box.buttons()[0]
+
 
 class SubscriptionDialog(QDialog):
     def __init__(self, neighborhoods):
@@ -36,7 +54,8 @@ class SubscriptionDialog(QDialog):
             cur = {"allowed_districts": [], "blocked_districts": [], "deal_types": [], "show_unknown": True}
 
         lay = QVBoxLayout(self)
-        tip = QLabel("⚠️ اگر «فقط این محله‌ها» پر باشد، بلک‌لیست بی‌اثر است. خالی = همهٔ محله‌ها.")
+        tip = QLabel("⚠️ اگر «فقط این محله‌ها» پر باشد، بلک‌لیست بی‌اثر است. خالی = همهٔ محله‌ها.\n"
+                     "محله‌های بلک‌لیست حتی در لیست هم نمی‌آیند (فیلتر سمت سرور).")
         tip.setStyleSheet("color:#f5a623; background:transparent; font-size:13px;")
         lay.addWidget(tip)
 
@@ -108,7 +127,7 @@ class AssignDialog(QDialog):
     def __init__(self, neighborhoods):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
-        self.setWindowTitle("تعیین محله")
+        self.setWindowTitle("تعیین محله برای این آگهی")
         form = QFormLayout()
         self.combo = QComboBox()
         for n in neighborhoods:
@@ -122,12 +141,12 @@ class AssignDialog(QDialog):
 
 
 class ListingDetailDialog(QDialog):
-    """دیالوگ بزرگ و کامل جزئیات."""
-
     def __init__(self, item, on_add, on_dismiss):
         super().__init__()
         self.setLayoutDirection(Qt.RightToLeft)
         self.item = item
+        self.on_add = on_add
+        self.on_dismiss = on_dismiss
         self.setWindowTitle("جزئیات آگهی — ملک‌یاب")
         self.resize(880, 700)
 
@@ -139,7 +158,6 @@ class ListingDetailDialog(QDialog):
         t.setStyleSheet("font-size:17px; font-weight:800; color:#f5a623; background:transparent;")
         lay.addWidget(t)
 
-        head = QHBoxLayout()
         src = "دیوار" if item.get("source") == "divar" else (item.get("source") or "—")
         dt = item.get("deal_type")
         info = QLabel(f"منبع: {src}   |   نوع: {DEAL_TYPE_FA.get(dt, dt or '—')}   |   "
@@ -147,8 +165,7 @@ class ListingDetailDialog(QDialog):
                       f"تاریخ: {(item.get('posted_at') or '')[:16].replace('T', ' ')}")
         info.setWordWrap(True)
         info.setStyleSheet("color: rgba(236,234,244,0.85); background:transparent;")
-        head.addWidget(info, 1)
-        lay.addLayout(head)
+        lay.addWidget(info)
 
         form = QFormLayout()
         area, rooms = item.get("area_m2"), item.get("rooms")
@@ -174,6 +191,8 @@ class ListingDetailDialog(QDialog):
             form.addRow("رهن کامل:", m)
         else:
             form.addRow("قیمت:", QLabel("—"))
+        if attrs.get("advertiser"):
+            form.addRow("آگهی‌دهنده:", QLabel(attrs["advertiser"]))
         lay.addLayout(form)
 
         if attrs.get("amenities"):
@@ -184,7 +203,7 @@ class ListingDetailDialog(QDialog):
             lay.addWidget(am)
 
         lay.addWidget(QLabel("توضیحات آگهی:"))
-        desc_box = QTextEdit((attrs.get("description") or "—"))
+        desc_box = QTextEdit(attrs.get("description") or "—")
         desc_box.setReadOnly(True)
         desc_box.setMinimumHeight(180)
         lay.addWidget(desc_box, 1)
@@ -208,7 +227,20 @@ class ListingDetailDialog(QDialog):
         lay.addLayout(btns)
 
     def _add(self):
-        self.accept(); self.on_add(self.item)
+        box = QMessageBox(self)
+        box.setWindowTitle("یادآوری: شمارهٔ تماس")
+        box.setIcon(QMessageBox.Warning)
+        box.setText(PHONE_WARN)
+        b_open = box.addButton("🔗 باز کردن دیوار اول", QMessageBox.AcceptRole)
+        b_go = box.addButton("➕ همان‌جا ادامهٔ افزودن", QMessageBox.ActionRole)
+        box.addButton("انصراف", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is b_open:
+            webbrowser.open(self.item.get("url") or "https://divar.ir")
+            return   # دیالوگ باز می‌ماند تا شماره را برداشتی، بعد «افزودن با فرم» را بزنی
+        if box.clickedButton() is b_go:
+            self.accept()
+            self.on_add(self.item)
 
     def _dismiss(self):
         self.accept(); self.on_dismiss(self.item)
@@ -231,7 +263,6 @@ class DiscoveryTab(QWidget):
         self.count_label = QLabel("")
         self.count_label.setStyleSheet("color: rgba(128,128,140,1); background: transparent;")
 
-        # 🧭 چیپ نامعلول‌ها — بالای صفحه مثل کارت‌های حسابداری
         self.unknown_chip = QPushButton("🧭 بدون محله")
         self.unknown_chip.setObjectName("chip")
         self.unknown_chip.setCheckable(True)
@@ -252,6 +283,7 @@ class DiscoveryTab(QWidget):
 
         settings_btn = QPushButton("⚙️ مناطق من")
         settings_btn.setObjectName("chip")
+        settings_btn.setToolTip("وایت‌لیست/بلک‌لیست محله‌ها + نوع معامله — مخصوص خودت")
         settings_btn.clicked.connect(self._open_subscription)
         refresh_btn = QPushButton("🔄 به‌روزرسانی")
         refresh_btn.setObjectName("chip")
@@ -271,7 +303,7 @@ class DiscoveryTab(QWidget):
 
         self.table = QTableWidget()
         self.table.setColumnCount(8)
-        self.table.setHorizontalHeaderLabels(["✓", "عنوان", "محله", "قیمت", "نوع", "منبع", "تاریخ", "اقدام"])
+        self.table.setHorizontalHeaderLabels(["✓", "عنوان", "محله", "قیمت", "نوع", "منبع", "تاریخ", "اقدام‌ها"])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -283,22 +315,30 @@ class DiscoveryTab(QWidget):
         self.table.cellClicked.connect(self._on_cell_clicked)
         self.table.doubleClicked.connect(lambda _: self._open_detail())
 
+        self.select_all_btn = QPushButton("☑ انتخاب همه/هیچ")
+        self.select_all_btn.setObjectName("chip")
+        self.select_all_btn.setToolTip("تیک زدن/برداشتن همهٔ ردیف‌های نمایش‌داده‌شده")
+        self.select_all_btn.clicked.connect(self._toggle_select_all)
         self.fast_btn = QPushButton("⚡ افزودن سریع انتخاب‌شده‌ها")
         self.fast_btn.setObjectName("primary")
-        self.fast_btn.setToolTip("بدون فرم — فایل با دادهٔ آگهی ساخته می‌شود؛ بعداً قابل ویرایش")
+        self.fast_btn.setToolTip("بدون فرم — فایل با دادهٔ آگهی ساخته می‌شود؛ بعداً از «فهرست فایل‌ها» ویرایشش کن")
         self.fast_btn.clicked.connect(self._bulk_add)
-        self.form_btn = QPushButton("📝 افزودن با فرم")
-        self.form_btn.clicked.connect(self._add_selected_with_form)
+        self.form_btn = QPushButton("📝 افزودن با فرم (ردیف انتخابی)")
+        self.form_btn.setToolTip("یک ردیف را انتخاب کن → جزئیات کامل → فرم از پیش پرشده")
+        self.form_btn.clicked.connect(self._open_detail)
         self.dismiss_btn = QPushButton("🚫 نادیده گرفتن انتخاب‌شده‌ها")
         self.dismiss_btn.setObjectName("chip")
+        self.dismiss_btn.setToolTip("آگهی‌های تیک‌خورده از لیست حذف می‌شوند")
         self.dismiss_btn.clicked.connect(self._dismiss_checked)
         actions = QHBoxLayout()
+        actions.addWidget(self.select_all_btn)
         actions.addWidget(self.fast_btn); actions.addWidget(self.form_btn); actions.addWidget(self.dismiss_btn)
         actions.addStretch()
         self.sel_label = QLabel("")
         actions.addWidget(self.sel_label)
 
-        hint = QLabel("تیک بزن → افزودن سریع گروهی | دابل‌کلیک = جزئیات کامل | ✖ در هر ردیف = نادیده")
+        hint = QLabel("تیک = انتخاب برای عمل گروهی | دابل‌کلیک ردیف = جزئیات کامل | "
+                      "دکمه‌های ستون «اقدام‌ها»: ⚡ افزودن سریع همین یکی، 🚫 نادیده، 🧭 تعیین محله")
         hint.setStyleSheet("color: rgba(128,128,140,1); background: transparent;")
 
         lay = QVBoxLayout(self)
@@ -392,22 +432,22 @@ class DiscoveryTab(QWidget):
 
             acts = QWidget()
             ah = QHBoxLayout(acts); ah.setContentsMargins(2, 2, 2, 2); ah.setSpacing(4)
-            bx = QPushButton("✖")
-            bx.setObjectName("chip"); bx.setFixedWidth(34)
-            bx.setToolTip("نادیده گرفتن — از لیست حذف می‌شود")
+            ab = QPushButton("⚡ افزودن")
+            ab.setObjectName("chip")
+            ab.setToolTip("افزودن سریع همین آگهی به فایل‌ها (بدون فرم)")
+            ab.clicked.connect(lambda _=False, x=it: self._quick_add_one(x))
+            ah.addWidget(ab)
+            bx = QPushButton("🚫 نادیده")
+            bx.setObjectName("chip")
+            bx.setToolTip("این آگهی از لیست حذف می‌شود")
             bx.clicked.connect(lambda _=False, x=it: self._dismiss_one(x))
             ah.addWidget(bx)
-            qb = QPushButton("⚡")
-            qb.setObjectName("chip"); qb.setFixedWidth(34)
-            qb.setToolTip("افزودن سریع همین آگهی (بدون فرم)")
-            qb.clicked.connect(lambda _=False, x=it: self._quick_add_one(x))
-            ah.addWidget(qb)
             if it.get("neighborhood_id") is None:
-                ab = QPushButton("🧭")
-                ab.setObjectName("chip"); ab.setFixedWidth(34)
-                ab.setToolTip("تعیین محله برای این آگهی")
-                ab.clicked.connect(lambda _=False, x=it: self._assign(x))
-                ah.addWidget(ab)
+                nb = QPushButton("🧭 محله")
+                nb.setObjectName("chip")
+                nb.setToolTip("محلهٔ این آگهی را دستی تعیین کن")
+                nb.clicked.connect(lambda _=False, x=it: self._assign(x))
+                ah.addWidget(nb)
             acts.setLayout(ah)
             self.table.setCellWidget(row, 7, acts)
 
@@ -424,6 +464,19 @@ class DiscoveryTab(QWidget):
         self.district_combo.setCurrentIndex(1 if checked else 0)
         self.district_combo.blockSignals(False)
         self._render()
+
+    def _toggle_select_all(self):
+        rows = self._visible_rows()
+        if not rows:
+            return
+        any_unchecked = any(
+            (c := self.table.item(r, 0)) and c.checkState() != Qt.Checked
+            for r in range(len(rows))
+        )
+        state = Qt.Checked if any_unchecked else Qt.Unchecked
+        for r in range(len(rows)):
+            self.table.item(r, 0).setCheckState(state)
+        self._update_sel_label()
 
     def _assign(self, it):
         if not self._neighborhoods:
@@ -457,6 +510,8 @@ class DiscoveryTab(QWidget):
         if not ids:
             QMessageBox.information(self, "توجه", "اول با تیک، آگهی‌ها را انتخاب کن.")
             return
+        if not _warn_phone(self):
+            return
         created_total, failed_total = 0, 0
         for i in range(0, len(ids), 50):
             try:
@@ -470,13 +525,15 @@ class DiscoveryTab(QWidget):
         self.refresh()
 
     def _quick_add_one(self, it):
+        if not _warn_phone(self):
+            return
         try:
             res = api_client.bulk_add_discovered([it["id"]])
         except ApiError as e:
             handle_api_error(self, e, "خطا")
             return
         if res.get("created"):
-            Toast.show(f"⚡ فایل #{res['created'][0]['property_id']} ساخته شد — از فهرست فایل‌ها ویرایشش کن")
+            Toast.show(f"⚡ فایل #{res['created'][0]['property_id']} ساخته شد — از «فهرست فایل‌ها» ویرایشش کن")
             self.refresh()
         else:
             Toast.show("این آگهی قبلاً اضافه شده بود")
@@ -524,13 +581,6 @@ class DiscoveryTab(QWidget):
     def _add_with_form(self, it: dict):
         PropertyFormDialog(property_data=None, on_saved=self.refresh,
                            prefill=self._prefill_from(it)).exec()
-
-    def _add_selected_with_form(self):
-        row = self.table.currentRow()
-        if not (0 <= row < len(self._row_map)):
-            QMessageBox.information(self, "توجه", "اول یک ردیف را انتخاب کن.")
-            return
-        self._open_detail()
 
     def _dismiss_one(self, it):
         self._dismiss_ids([it["id"]])

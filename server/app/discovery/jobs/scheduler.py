@@ -4,6 +4,11 @@ from datetime import datetime, timedelta, timezone
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+# ⚠️ ثبت مدل‌های هدفِ کلیدهای خارجی در metadata — بدون این، flush با
+# NoReferencedTableError (users/properties) می‌میرد. جابه‌جا نکن!
+from app.models import user as _m_user  # noqa: F401,E402
+from app.models import property as _m_property  # noqa: F401,E402
+
 from sqlalchemy import or_
 from app.db.session import SessionLocal
 from app.discovery.adapters.divar import DivarAdapter

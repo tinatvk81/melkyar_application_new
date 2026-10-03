@@ -45,5 +45,6 @@ def build_property_from_listing(listing: DiscoveredListing, db: Session, owner_a
         amenities=attrs.get("amenities") or None,
         details=details,
         notes="\n".join(line for line in note_lines if line),
+        owner_name=attrs.get("advertiser"),   # نام آگهی‌دهنده — فقط وقتی دیوار نمایشش داده
         owner_agent_id=owner_agent_id,
     )

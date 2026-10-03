@@ -16,7 +16,7 @@ from ui.property_gallery_dialog import PropertyGalleryDialog
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QVBoxLayout, QLineEdit, QComboBox, QDoubleSpinBox,
     QSpinBox, QCheckBox, QTextEdit, QPushButton, QHBoxLayout, QWidget,
-    QMessageBox, QLabel, QScrollArea, QFrame
+    QMessageBox, QLabel, QScrollArea, QFrame,QApplication
 )
 
 from ui.geo_data import DEFAULT_CITY
@@ -203,8 +203,9 @@ class PropertyFormDialog(QDialog):
         base.addWidget(scroll)
         self.setLayout(base)
         self.setSizeGripEnabled(True)   # دستگیرهٔ تغییر اندازه در گوشه
-        self.setMinimumSize(430, 540)
-        self.resize(540, 700)
+        scr = QApplication.primaryScreen().availableGeometry()
+        self.setMinimumSize(560, 640)
+        self.resize(min(920, int(scr.width() * 0.82)), min(980, int(scr.height() * 0.94)))
 
 
     def _clear_details_form(self):
