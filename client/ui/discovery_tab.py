@@ -1,4 +1,5 @@
 import webbrowser
+import re as _re
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -206,6 +207,11 @@ class ListingDetailDialog(QDialog):
         desc_box = QTextEdit(attrs.get("description") or "—")
         desc_box.setReadOnly(True)
         desc_box.setMinimumHeight(180)
+        _html = _re.sub(r"(https?://[^\s]+)", r'<a href="\1">\1</a>', (attrs.get("description") or "—").replace("\n", "<br>"))
+        desc_box.setHtml(_html)
+        desc_box.setOpenExternalLinks(True)
+        desc_box.setTextInteractionFlags(Qt.TextBrowserInteraction)
+
         lay.addWidget(desc_box, 1)
 
         note = QLabel("شمارهٔ تماس در خود دیوار است — دکمهٔ زیر → «اطلاعات تماس».")
@@ -569,7 +575,7 @@ class DiscoveryTab(QWidget):
     @staticmethod
     def _prefill_from(it: dict) -> dict:
         attrs = it.get("attributes") or {}
-        note_lines = [f"وارد شده از ملک‌یاب — منبع: {it.get('source')}", it.get("title") or "", it.get("url") or ""]
+        note_lines = [f"وارد شده از ملک‌یاب — منبع: {it.get('source')}", it.get("title") or ""]
         desc = (attrs.get("description") or "").strip()
         if desc:
             note_lines.append("— توضیحات آگهی —")

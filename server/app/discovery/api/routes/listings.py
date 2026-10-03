@@ -113,16 +113,28 @@ def get_listing(listing_id: int, db: Session = Depends(get_db), user: User = Dep
 
 @router.post("/listings/{listing_id}/refresh-details", response_model=DiscoveryListingRead)
 def refresh_details(listing_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """دریافت جزئیات کامل (بدون شماره) در لحظهٔ کلیک مشاور — human-in-the-loop."""
+    """دریافت جزئیات کامل (بدون شماره) در لحظهٔ کلیک مشاور — هر دو منبع."""
     listing = db.get(DiscoveredListing, listing_id)
     if listing is None:
         raise HTTPException(404, "آگهی پیدا نشد")
-    payload = fetch_details(listing.external_id)
-    if payload:
-        enrich_from_payload(listing, payload)
-        db.commit()
-        db.refresh(listing)
+    _ensure_enriched(db, listing)
     return listing
+
+def _ensure_enriched(db: Session, listing: DiscoveredListing):
+    """تضمین: هر آگهی موقع تبدیل به فایل، جزئیات کامل (توضیح/امکانات/سال/طبقه) دارد."""
+    if (listing.attributes or {}).get("has_details"):
+        return
+    if listing.source == "sheypoor":
+        from app.discovery.services.details import fetch_sheypoor_details, enrich_from_sheypoor_payload
+        payload = fetch_sheypoor_details(listing.external_id)
+        if payload:
+            enrich_from_sheypoor_payload(listing, payload)
+    else:
+        payload = fetch_details(listing.external_id)
+        if payload:
+            enrich_from_payload(listing, payload)
+    db.commit()
+    db.refresh(listing)
 
 
 @router.post("/listings/bulk-add")
@@ -134,6 +146,7 @@ def bulk_add(data: BulkAddIn, db: Session = Depends(get_db), user: User = Depend
         if not listing or listing.converted_property_id is not None:
             failed.append({"id": lid, "reason": "ناموجود یا قبلاً اضافه شده"})
             continue
+        _ensure_enriched(db, listing)             
         p = build_property_from_listing(listing, db, owner_agent_id=user.id)
         db.add(p)
         db.flush()
@@ -156,6 +169,9 @@ def convert_to_file(listing_id: int, db: Session = Depends(get_db), user: User =
         raise HTTPException(404, "آگهی پیدا نشد")
     if listing.converted_property_id is not None:
         raise HTTPException(400, "این آگهی قبلاً به فایل تبدیل شده")
+    if listing.converted_property_id is not None:
+        raise HTTPException(400, "این آگهی قبلاً به فایل تبدیل شده")
+    _ensure_enriched(db, listing)                     # ← اول جزئیات کامل
     new_property = build_property_from_listing(listing, db, owner_agent_id=user.id)
     db.add(new_property)
     db.flush()
@@ -164,6 +180,7 @@ def convert_to_file(listing_id: int, db: Session = Depends(get_db), user: User =
     listing.converted_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(new_property)
+
     log_activity(db, user.id, "create", "property", new_property.id,
                  detail=f"وارد شده از ملک‌یاب — {new_property.city} — {new_property.district or ''}")
     return {"status": "ok", "property_id": new_property.id}
