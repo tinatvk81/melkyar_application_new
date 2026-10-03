@@ -35,7 +35,7 @@ def fetch_details(token: str) -> dict | None:
     # ۲) مسیر وب — دادهٔ کامل داخل __PRELOADED_STATE__ صفحه است
     try:
         r2 = requests.get(WEB_URL.format(token=token), headers=HEADERS, timeout=15)
-        if r2.status_code != 200:
+        if r2.status_code not in (200, 410):   # 410 = آگهی منقضی/حذف ولی STATE هنوز داده دارد
             return None
         m = re.search(r"__PRELOADED_STATE__\s*=\s*(\{.+?\})\s*;\s*\n", r2.text, re.DOTALL) or re.search(r"__PRELOADED_STATE__\s*=\s*(\{.*)", r2.text)
         if not m:
