@@ -8,21 +8,57 @@ from app.discovery.services.keywords import extract_amenities, parse_fa_amount
 
 logger = logging.getLogger(__name__)
 
-DETAILS_URL = "https://api.divar.ir/v8/posts-v2/web/{token}"
+# DETAILS_URL = "https://api.divar.ir/v8/posts-v2/web/{token}"
+DETAILS_URL = "https://api.divar.ir/v8/posts-v2/web/{token}"  
+WEB_URL = "https://divar.ir/v/{token}"                          
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 _ADVERTISER_STRIP = re.compile(r"^(مشاور|آژانس|املاک|بنگاه|دپارتمان|کارگزاری)\s+")
 
 
+# def fetch_details(token: str) -> dict | None:
+#     try:
+#         r = requests.get(DETAILS_URL.format(token=token), headers=HEADERS, timeout=15)
+#         r.raise_for_status()
+#         return r.json()
+#     except Exception:
+#         logger.exception(f"[details] خطا در دریافت جزئیات {token}")
+#         return None
 def fetch_details(token: str) -> dict | None:
+    # ۱) مسیر قبلی API — اگر دیوار بسته باشد 404 می‌دهد
     try:
         r = requests.get(DETAILS_URL.format(token=token), headers=HEADERS, timeout=15)
-        r.raise_for_status()
-        return r.json()
+        if r.status_code == 200:
+            return r.json()
     except Exception:
-        logger.exception(f"[details] خطا در دریافت جزئیات {token}")
+        logger.exception(f"[details] خطای API {token}")
+    # ۲) مسیر وب — دادهٔ کامل داخل __PRELOADED_STATE__ صفحه است
+    try:
+        r2 = requests.get(WEB_URL.format(token=token), headers=HEADERS, timeout=15)
+        if r2.status_code != 200:
+            return None
+        m = re.search(r"window\.__PRELOADED_STATE__\s*=\s*(\{.*?\});", r2.text, re.DOTALL)
+        if not m:
+            logger.warning(f"[details] PRELOADED_STATE یافت نشد {token}")
+            return None
+        import json as _json
+        state = _json.loads(m.group(1))
+        post = (state.get("post") or {}).get("post") or {}
+        if not post:
+            return None
+        # ساختار payload را شبیه sections درمی‌آوریم تا enrich_from_payload همان‌طور کار کند
+        sections = []
+        for w in post.get("sections", []):
+            sections.append({"widgets": w.get("widget_list", [])})
+        return {"sections": [
+            {"widgets": [
+                {**w, "widget_type": (w.get("widget_type") or w.get("@class", "").split(".")[-1])}
+                for w in s.get("widgets", [])
+            ]} for s in sections
+        ]}
+    except Exception:
+        logger.exception(f"[details] خطای وب {token}")
         return None
-
 
 def _walk(node):
     if isinstance(node, dict):
