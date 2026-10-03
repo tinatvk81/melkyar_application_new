@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLabel, QHeaderView, QAbstractItemView, QDialog, QFormLayout,
-    QComboBox, QCheckBox, QListWidget, QListWidgetItem, QFrame,
+    QComboBox, QCheckBox, QListWidget, QListWidgetItem, QFrame, QMessageBox,
 )
 from PySide6.QtGui import QColor
 
@@ -318,6 +318,21 @@ class DiscoveryTab(QWidget):
             self.district_combo.addItem(n["name"], n["id"])
         self.district_combo.blockSignals(False)
 
+
+    def _open_subscription(self):
+        if not self._neighborhoods:
+            try:
+                self._neighborhoods = api_client.get_discovery_neighborhoods()
+            except ApiError:
+                self._neighborhoods = []
+        if not self._neighborhoods:
+            QMessageBox.warning(self, "خطا", "لیست محله‌ها خالی است — seed اجرا نشده؟")
+            return
+        dlg = SubscriptionDialog(self._neighborhoods)
+        if dlg.exec() == QDialog.Accepted:
+            self.refresh()
+
+            
     def refresh(self):
         TableSpinner.show(self.table)
         try:
