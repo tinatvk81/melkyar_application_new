@@ -127,7 +127,7 @@ def refresh_details(listing_id: int, db: Session = Depends(get_db), user: User =
 
 @router.post("/listings/bulk-add")
 def bulk_add(data: BulkAddIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """افزودن سریع گروهی — بدون فرم؛ فایل با دادهٔ آگهی ساخته می‌شود و بعداً قابل ویرایش است."""
+    from app.schemas.property import PropertyRead
     created, failed = [], []
     for lid in data.listing_ids[:50]:
         listing = db.get(DiscoveredListing, lid)
@@ -140,13 +140,14 @@ def bulk_add(data: BulkAddIn, db: Session = Depends(get_db), user: User = Depend
         listing.converted_property_id = p.id
         listing.converted_by_user_id = user.id
         listing.converted_at = datetime.now(timezone.utc)
-        created.append({"listing_id": lid, "property_id": p.id})
+        db.flush()
+        created.append({"listing_id": lid, "property_id": p.id,
+                        "property": PropertyRead.model_validate(p).model_dump(mode="json")})
     db.commit()
     for c in created:
         log_activity(db, user.id, "create", "property", c["property_id"], detail="افزودن سریع از ملک‌یاب")
     db.commit()
     return {"created": created, "failed": failed}
-
 
 @router.post("/listings/{listing_id}/convert-to-file")
 def convert_to_file(listing_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):

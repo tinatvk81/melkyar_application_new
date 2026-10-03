@@ -43,14 +43,15 @@ def _extract_advertiser(bottom: str) -> str | None:
     name = _ADVERTISER_STRIP.sub("", name).strip(" -ـ")
     return name if len(name) >= 3 else None
 
-
 def enrich_from_payload(listing, payload: dict) -> None:
-    rows, features, description = [], [], ""
+    rows, features, descriptions = [], [], []
     for w in _walk(payload.get("sections") or []):
         wt = w.get("widget_type") or ""
         data = w.get("data") or {}
-        if wt == "DESCRIPTION_ROW" and not description:
-            description = (data.get("text") or "").strip()
+        if wt == "DESCRIPTION_ROW":
+            t = (data.get("text") or "").strip()
+            if t:
+                descriptions.append(t)
         elif "FEATURE" in wt or "AMENIT" in wt:
             t = (data.get("title") or "").strip()
             if t:
@@ -69,6 +70,14 @@ def enrich_from_payload(listing, payload: dict) -> None:
             if any(k in title for k in keys):
                 return value
         return None
+
+    # توضیحات واقعی = بلندترین DESCRIPTION_ROW (اولی معمولاً «انتشار/به‌روزرسانی» است)
+    description = max(descriptions, key=len, default="")
+    timestamps = [d for d in descriptions if d != description and ("انتشار" in d or "به\u200cروزرسانی" in d or "به روزرسانی" in d)]
+    for t in timestamps:
+        attrs.setdefault("timestamps", [])
+        if t not in attrs["timestamps"]:
+            attrs["timestamps"].append(t)
 
     if listing.area_m2 is None:
         v = row_value("متراژ")
@@ -96,13 +105,10 @@ def enrich_from_payload(listing, payload: dict) -> None:
 
     kw_hits = extract_amenities(description, listing.title or "", listing.raw_address or "")
     amenities = sorted(set(features) | set(kw_hits))
-
     for title, value in rows:
-    if value and value.strip() in ("دارد", "✅", "بله"):
-        if title and title not in amenities:
-            amenities.append(title)
-
-
+        if value and value.strip() in ("دارد", "✅", "بله"):
+            if title and title not in amenities:
+                amenities.append(title)
     if amenities:
         attrs["amenities"] = amenities
     if description:

@@ -236,12 +236,16 @@ class ListingDetailDialog(QDialog):
         box.addButton("انصراف", QMessageBox.RejectRole)
         box.exec()
         if box.clickedButton() is b_open:
+            import webbrowser
             webbrowser.open(self.item.get("url") or "https://divar.ir")
             Toast.show("شماره را برداشت؟ برگرد و «افزودن با فرم» را بزن — فرم باز است")
-            return   # دیالوگ باز می‌ماند تا شماره را برداشتی، بعد «افزودن با فرم» را بزنی
+            return
         if box.clickedButton() is b_go:
+            import webbrowser
+            webbrowser.open(self.item.get("url") or "https://divar.ir")
             self.accept()
             self.on_add(self.item)
+
 
     def _dismiss(self):
         self.accept(); self.on_dismiss(self.item)
@@ -534,11 +538,17 @@ class DiscoveryTab(QWidget):
             handle_api_error(self, e, "خطا")
             return
         if res.get("created"):
-            Toast.show(f"⚡ فایل #{res['created'][0]['property_id']} ساخته شد — از «فهرست فایل‌ها» ویرایشش کن")
+            prop = (res["created"][0] or {}).get("property")
             self.refresh()
+            if prop:
+                Toast.show(f"⚡ فایل #{prop['id']} ساخته شد — شمارهٔ تماس را همین‌جا بگذار")
+                PropertyFormDialog(property_data=prop, on_saved=self.refresh).exec()
+            else:
+                Toast.show("⚡ فایل ساخته شد")
         else:
             Toast.show("این آگهی قبلاً اضافه شده بود")
 
+            
     def _open_detail(self):
         row = self.table.currentRow()
         if not (0 <= row < len(self._row_map)):
@@ -576,6 +586,7 @@ class DiscoveryTab(QWidget):
             "build_year": attrs.get("build_year"),
             "amenities": attrs.get("amenities") or [],
             "source_note": "\n".join(x for x in note_lines if x),
+            "updated_fa": next((t for t in (attrs.get("timestamps") or []) if "به\u200cروزرسانی" in t or "به روزرسانی" in t), ""),
             "address_full": it.get("raw_address"),
             "url": it.get("url"),
             "listing_id": it.get("id"),

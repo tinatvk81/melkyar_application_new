@@ -174,7 +174,7 @@ class PropertyFormDialog(QDialog):
         self.contract_end_input = JalaliDateEdit(allow_empty=True)
 
         self.notes_input = QTextEdit()
-        self.notes_input.setFixedHeight(80)
+        self.notes_input.setMinimumHeight(240)
         outer.addWidget(QLabel("توضیحات:"))
         outer.addWidget(self.notes_input)
 
@@ -273,7 +273,7 @@ class PropertyFormDialog(QDialog):
         idx = self.deal_type_combo.findData(deal_type)
         if idx >= 0:
             self.deal_type_combo.setCurrentIndex(idx)
-
+            self._on_deal_type_changed(deal_type)   # ردیف‌های قیمت/ودیعه حتماً ساخته شوند
         city = d.get("city") or DEFAULT_CITY
         self.geo_city.set_city(city)
         try:
@@ -293,12 +293,8 @@ class PropertyFormDialog(QDialog):
             self.build_year_input.setValue(self.build_year_input.minimum())
             self.build_year_input.setSpecialValueText(" ")   # خالی نمایش داده شود
         self.extra_amenities.set_tags(d.get("amenities") or [])
-
-        # دکمهٔ باز کردن آگهی + یادداشت آدرس
-        from ui.toast import Toast as _T
-        self._prefill_url = d.get("url")
-        if self._prefill_url:
-            _set_source_link(d.get("url"))
+        if "فوری" in (d.get("amenities") or []):
+            self.urgent_check.setChecked(True)
 
         if deal_type == "sale":
             self.price_input.set_value(d.get("price"))
@@ -309,6 +305,8 @@ class PropertyFormDialog(QDialog):
             self.deposit_full_input.set_value(d.get("deposit"))
 
         self.notes_input.setPlainText(d.get("source_note") or "")
+        if d.get("updated_fa"):
+            self.notes_input.append(d["updated_fa"])
         self._discovery_listing_id = d.get("listing_id")
 
 
@@ -392,6 +390,7 @@ class PropertyFormDialog(QDialog):
             "location_url": self.location_input.text().strip() or None,
             "details": details,
             "notes": self.notes_input.toPlainText().strip() or None,
+
             "build_year": self.build_year_input.value() or None,
             "total_units": self.total_units_input.value() or None,
             "convertible_note": self.convertible_input.text().strip() or None,
