@@ -74,14 +74,19 @@ def _walk(node):
             yield from _walk(v)
 
 
+_TIME_PHRASE = re.compile(r"^(لحظاتی|چند|[\d۰-۹]+)")
+
 def _extract_advertiser(bottom: str) -> str | None:
-    """از متن «نام در محله» → نام آگهی‌دهنده (فقط وقتی دیوار نام را نمایش داده باشد)."""
+    """از متن «نام در محله» → نام آگهی‌دهنده — فقط اگر نام واقعی باشد، نه عبارت زمانی."""
     t = (bottom or "").strip()
     if " در " not in t:
         return None
     name = t.split(" در ", 1)[0].strip()
     name = _ADVERTISER_STRIP.sub("", name).strip(" -ـ")
-    return name if len(name) >= 3 else None
+    if not name or len(name) < 3 or _TIME_PHRASE.match(name):
+        return None
+    return name
+
 
 def enrich_from_payload(listing, payload: dict) -> None:
     rows, features, descriptions = [], [], []
@@ -132,6 +137,9 @@ def enrich_from_payload(listing, payload: dict) -> None:
         if v and v.strip().isdigit():
             attrs["build_year"] = int(v.strip())
     v = row_value("طبقه")
+    ppm = row_value("قیمت هر متر")
+    if ppm:
+        attrs["price_per_m2"] = ppm
     if v:
         attrs["floor"] = v
 

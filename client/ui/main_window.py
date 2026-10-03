@@ -60,9 +60,9 @@ class PropertyListTab(QWidget):
 
 
         self.table = QTableWidget()
-        self.table.setColumnCount(10)
+        self.table.setColumnCount(11)
         self.table.setHorizontalHeaderLabels(
-            ["⭐", "عکس", "شهر", "نوع معامله", "قیمت", "متری", "متراژ", "اتاق", "آدرس", "تاریخ پایان قرارداد"]
+            ["⭐", "عکس", "شهر", "نوع معامله", "قیمت", "متری", "متراژ", "اتاق", "آدرس", "تاریخ پایان قرارداد", "تاریخ ثبت"]
         )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -347,7 +347,9 @@ class PropertyListTab(QWidget):
                 addr_item.setToolTip(f"🔁 قابل تبدیل: {p['convertible_note']}")
             self.table.setItem(row, 8, addr_item)
             self.table.setItem(row, 9, QTableWidgetItem(to_jalali_str(p.get("contract_end_date"))))
+            self.table.setItem(row, 10, QTableWidgetItem(to_jalali_str((p.get("created_at") or "")[:10])))
 
+            
     def _get_thumb(self, prop_id, image_id):
         if not hasattr(self, "_pix_cache"):
             self._pix_cache = {}

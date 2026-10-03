@@ -34,6 +34,9 @@ def build_property_from_listing(listing: DiscoveredListing, db: Session, owner_a
         note_lines.append("— توضیحات آگهی —")
         note_lines.append(desc[:800])
 
+    if listing.posted_at:
+        note_lines.append(f"تاریخ انتشار آگهی: {listing.posted_at.date().isoformat()}")
+        
     return Property(
         deal_type=deal_type,
         city=listing.city or "مشهد",
