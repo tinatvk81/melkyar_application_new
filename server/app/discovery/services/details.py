@@ -1,7 +1,7 @@
 """دریافت جزئیات هر آگهی دیوار — بدون شماره تماس (پشت honeypot است؛ عمداً اتومات نمی‌گیریم)."""
 import logging
 import re
-
+import time
 import requests
 
 from app.discovery.services.keywords import extract_amenities, parse_fa_amount
