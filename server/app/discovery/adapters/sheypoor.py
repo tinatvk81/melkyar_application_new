@@ -1,77 +1,68 @@
-import re
-import json
+"""Adapter شیپور از طریق وب‌سرویس majidapi (غیررسمی — فقط این فایل وابسته است).
+سیاست: فقط آگهی‌های شخصی (shopLogo دارد = آژانسی و رد می‌شود)."""
 import logging
+import os
+import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
 from .base import SourceAdapter, RawListing
 
 logger = logging.getLogger(__name__)
-BASE_URL = "https://www.sheypoor.com"
 
-CATEGORIES = {
-    "houses-apartments-for-sale": "sale",
-    "villa-for-sale": "sale",
-    "house-apartment-for-rent": "rent",
-}
-
-AGENCY_KEYWORDS = ["مشاور", "املاک", "آژانس", "دپارتمان", "کارشناس", "بنگاه"]
-OWNER_SIGNAL_KEYWORDS = ["دفاتر محترم املاک همکاری نداریم"]
-FLIGHT_LINE_RE = re.compile(r'^(\d+):(.*)$', re.MULTILINE)
+BASE = "https://api.majidapi.ir/sheypoor"
+CITY_ID = "444"              # مشهد
+REAL_ESTATE_ROOT = 43603
+RATE_SLEEP = 6
+_MAX_PAGES = 3
+_PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
 
 
-def _is_probably_agency(item: dict) -> bool:
-    attrs = item.get("attributes", {})
-    text = f"{attrs.get('title', '')} {attrs.get('description', '')}"
-    if any(k in text for k in OWNER_SIGNAL_KEYWORDS):
-        return False
-    if attrs.get("shopLogo"):
-        return True
-    return any(k in text for k in AGENCY_KEYWORDS)
+def _token() -> str | None:
+    return os.environ.get("MAJIDAPI_TOKEN") or None
 
 
-def _extract_serp_listings(html_text: str) -> list[dict]:
-    listings = []
-    for match in FLIGHT_LINE_RE.finditer(html_text):
-        try:
-            parsed = json.loads(match.group(2))
-        except (json.JSONDecodeError, ValueError):
-            continue
-        listings.extend(_find_serp_items(parsed))
-    return listings
+def _api(**params) -> dict | None:
+    tok = _token()
+    if not tok:
+        logger.warning("[sheypoor] MAJIDAPI_TOKEN تنظیم نشده — منبع رد شد")
+        return None
+    params["token"] = tok
+    try:
+        r = requests.get(BASE, params=params, timeout=25)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        logger.exception("[sheypoor] خطا در درخواست API")
+        return None
+    finally:
+        time.sleep(RATE_SLEEP)
 
 
-def _find_serp_items(node) -> list[dict]:
-    found = []
-    if isinstance(node, dict):
-        qk = node.get("queryKey")
-        if isinstance(qk, list) and qk and qk[0] == "LOAD_SERP_RESULTS":
-            for page in node.get("state", {}).get("data", {}).get("pages", []):
-                for group in page.get("data", []):
-                    if group.get("type") == "listingGroup":
-                        for item in group.get("items", []):
-                            if item.get("type") == "normal":
-                                found.append(item)
-        for v in node.values():
-            found.extend(_find_serp_items(v))
-    elif isinstance(node, list):
-        for v in node:
-            found.extend(_find_serp_items(v))
-    return found
+def _parse_price(price_string: str) -> tuple[int | None, int | None]:
+    """برمی‌گرداند (primary, secondary):
+    «32,500,000,000 تومان» → (قیمت، None) | «رهن: X / اجاره: Y» → (X, Y) | «رهن: X» → (X, None)"""
+    t = (price_string or "").translate(_PERSIAN_DIGITS).strip()
+    if not t or "توافقی" in t or "رایگان" in t:
+        return None, None
+    nums = [int(n.replace(",", "")) for n in re.findall(r"[\d,]{3,}", t)]
+    if not nums:
+        return None, None
+    if "رهن" in t and "اجاره" in t:
+        return nums[0], nums[1]
+    if "اجاره" in t:
+        return None, nums[0]
+    return nums[0], None
 
 
-def _parse_price(item: dict, deal_type: str) -> int | None:
-    def to_int(s):
-        if not s or not str(s).replace(",", "").isdigit():
-            return None
-        return int(str(s).replace(",", ""))
+def _is_real_estate(it: dict) -> bool:
+    return (it.get("category") or {}).get("rootCategoryId") == REAL_ESTATE_ROOT
 
-    prices = {p["label"]: p.get("amount") for p in item.get("attributes", {}).get("price") or []}
-    if deal_type == "rent":
-        return to_int(prices.get("اجاره")) or to_int(prices.get("رهن"))
-    return to_int(prices.get("رهن")) or to_int(prices.get("قیمت"))
+
+def _skip_short_term(it: dict) -> bool:
+    return "کوتاه مدت" in ((it.get("category") or {}).get("c2") or "")
 
 
 class SheypoorAdapter(SourceAdapter):
@@ -79,42 +70,64 @@ class SheypoorAdapter(SourceAdapter):
 
     def fetch_new(self, city: str, category: str, since: datetime) -> list[RawListing]:
         results: list[RawListing] = []
-
-        for slug, deal_type in CATEGORIES.items():
-            url = f"{BASE_URL}/s/{city}/{slug}"
-            try:
-                resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-                resp.raise_for_status()
-            except Exception:
-                logger.exception(f"[sheypoor:{slug}] خطا در دریافت — این دسته رد شد")
-                continue
-
-            for item in _extract_serp_listings(resp.text):
-                if _is_probably_agency(item):
+        for page in range(1, _MAX_PAGES + 1):
+            data = _api(action="category", categoryID=REAL_ESTATE_ROOT,
+                        cityID=CITY_ID, page=page)
+            if not data or not data.get("ok"):
+                break
+            items = data.get("result") or []
+            if not items:
+                break
+            for it in items:
+                if not _is_real_estate(it) or _skip_short_term(it):
                     continue
-
-                attrs = item.get("attributes", {})
-                location = attrs.get("location", "")
-                district = location.split("، ")[-1] if "، " in location else ""
-
-                sort_ms = (item.get("sort") or [None, None])[1]
-                posted_at = (
-                    datetime.fromtimestamp(sort_ms / 1000, tz=timezone.utc)
-                    if sort_ms else datetime.now(timezone.utc)
-                )
+                if it.get("shopLogo"):      # آژانسی → فقط شخصی می‌خواهیم
+                    continue
+                posted_at = self._parse_sort(it.get("sortInfo")) or datetime.now(timezone.utc)
                 if posted_at < since:
                     continue
-
+                deal_type = self._guess_deal_type(it)
+                primary, secondary = _parse_price(it.get("priceString") or "")
+                price = deposit = monthly = None
+                if deal_type == "sale":
+                    price = primary
+                elif secondary is not None:
+                    deposit, monthly = primary, secondary
+                elif primary is not None:
+                    deposit = primary        # «رهن: X» بدون اجاره → رهن کامل در convert
                 results.append(RawListing(
-                    external_id=item.get("id"),
-                    title=attrs.get("title", ""),
-                    raw_address=district,
-                    price=_parse_price(item, deal_type),
+                    external_id=str(it.get("listingID")),
+                    title=it.get("title") or "",
+                    raw_address=((it.get("location") or {}).get("neighbourhood") or ""),
+                    price=price,
                     deal_type=deal_type,
                     posted_at=posted_at,
-                    url=attrs.get("url", ""),
+                    url=f"https://www.sheypoor.com/v/{it.get('listingID')}",
+                    deposit=deposit,
+                    monthly_rent=monthly,
+                    attributes={"price_string": it.get("priceString"),
+                                "c2": (it.get("category") or {}).get("c2")},
                 ))
-
-            time.sleep(1.5)
-
         return results
+
+    @staticmethod
+    def _guess_deal_type(it: dict) -> str:
+        c2 = (it.get("category") or {}).get("c2") or ""
+        if "رهن و اجاره" in c2 or "اجاره" in c2:
+            return "rent"        # رهن‌کامل در convert تشخیص داده می‌شود
+        return "sale"
+
+    @staticmethod
+    def _parse_sort(text: str) -> datetime | None:
+        t = (text or "").translate(_PERSIAN_DIGITS).strip()
+        if not t:
+            return None
+        if "لحظات" in t:
+            return datetime.now(timezone.utc)
+        m = re.search(r"(\d+)\s*(ثانیه|دقیقه|ساعت|روز|هفته|ماه)", t)
+        if not m:
+            return None
+        n, unit = int(m.group(1)), m.group(2)
+        mult = {"ثانیه": 1, "دقیقه": 60, "ساعت": 3600, "روز": 86400,
+                "هفته": 604800, "ماه": 2592000}[unit]
+        return datetime.now(timezone.utc) - timedelta(seconds=n * mult)

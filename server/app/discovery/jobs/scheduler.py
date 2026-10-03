@@ -28,13 +28,20 @@ DETAIL_SLEEP = 1.2
 
 
 def _enrich_one(db, listing) -> bool:
+    if listing.source == "sheypoor":
+        from app.discovery.services.details import fetch_sheypoor_details, enrich_from_sheypoor_payload
+        payload = fetch_sheypoor_details(listing.external_id)
+        if not payload:
+            return False
+        enrich_from_sheypoor_payload(listing, payload)
+        db.commit()
+        return True
     payload = fetch_details(listing.external_id)
     if not payload:
         return False
     enrich_from_payload(listing, payload)
     db.commit()
     return True
-
 
 def run_one_source(adapter, db):
     try:
