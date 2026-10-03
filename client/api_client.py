@@ -781,4 +781,40 @@ class ApiClient:
         self._raise_for_status(resp)
         return resp.json()
 
+
+    def get_discovery_neighborhoods(self):
+        resp = self._get(f"{self.server_url}/discovery/neighborhoods", headers=self._headers, timeout=10)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def get_discovery_subscription(self):
+        resp = self._get(f"{self.server_url}/discovery/subscription", headers=self._headers, timeout=10)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def update_discovery_subscription(self, payload: dict):
+        resp = self._put(f"{self.server_url}/discovery/subscription",
+                         json=payload, headers=self._headers, timeout=10)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def bulk_add_discovered(self, listing_ids: list[int]):
+        resp = self._post(f"{self.server_url}/discovery/listings/bulk-add",
+                          json={"listing_ids": listing_ids}, headers=self._headers, timeout=30)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def assign_discovery_neighborhood(self, listing_id: int, neighborhood_id: int):
+        resp = self._post(f"{self.server_url}/discovery/listings/{listing_id}/assign-neighborhood",
+                          json={"neighborhood_id": neighborhood_id}, headers=self._headers, timeout=10)
+        self._raise_for_status(resp)
+        return resp.json()
+
+    def refresh_discovery_details(self, listing_id: int):
+        resp = self._post(f"{self.server_url}/discovery/listings/{listing_id}/refresh-details",
+                          headers=self._headers, timeout=25)
+        self._raise_for_status(resp)
+        return resp.json()
+
+        
 api_client = ApiClient()  # نمونه‌ی مشترک در کل برنامه‌ی کلاینت

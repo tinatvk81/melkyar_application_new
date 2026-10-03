@@ -28,8 +28,18 @@ DEAL_TYPE_LABELS = {
     "mortgage": "رهن کامل",
 }
 
-
-
+def _post_save_background(property_id: int, similar_id=None):
+    try:
+        res = api_client.notify_request_matches(property_id)
+        if res.get("notified"):
+            Toast.show(f"🎯 این فایل با {res['notified']} درخواست مشتری منطبق بود — اطلاع‌یه رفت", kind="info")
+    except ApiError:
+        pass
+    if similar_id:
+        try:
+            api_client.flag_shared_listing(property_id, similar_id)
+        except ApiError:
+            pass
 
 class PropertyFormDialog(QDialog):
     """
@@ -254,7 +264,9 @@ class PropertyFormDialog(QDialog):
         self.geo_district.set_value(d.get("district") or "", city)
         self.area_input.setValue(d.get("area_m2") or 0)
         self.rooms_input.setValue(d.get("rooms") or 0)
-
+        self.build_year_input.setValue(d.get("build_year") or 0)
+        self.extra_amenities.set_tags(d.get("amenities") or [])
+        
         if deal_type == "sale":
             self.price_input.set_value(d.get("price"))
         elif deal_type == "rent":
@@ -436,19 +448,22 @@ class PropertyFormDialog(QDialog):
                 pass
 
         if created:
-            try:
-                res = api_client.notify_request_matches(created["id"])
-                if res.get("notified"):
-                    Toast.show(f"🎯 این فایل با {res['notified']} درخواست مشتری منطبق بود — اطلاع‌یه رفت", kind="info")
-            except ApiError:
-                pass
-            # فایل مشابه با تأیید کاربر ثبت شد → مدیر را مطلع کن (فایل مشترک دو مشاور)
-            if confirmed_similar_id:
-                try:
-                    api_client.flag_shared_listing(created["id"], confirmed_similar_id)
-                except ApiError:
-                    pass
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(200, lambda: _post_save_background(created["id"], confirmed_similar_id))
 
         self.on_saved()
-
         self.accept()
+        #         if res.get("notified"):
+        #             Toast.show(f"🎯 این فایل با {res['notified']} درخواست مشتری منطبق بود — اطلاع‌یه رفت", kind="info")
+        #     except ApiError:
+        #         pass
+        #     # فایل مشابه با تأیید کاربر ثبت شد → مدیر را مطلع کن (فایل مشترک دو مشاور)
+        #     if confirmed_similar_id:
+        #         try:
+        #             api_client.flag_shared_listing(created["id"], confirmed_similar_id)
+        #         except ApiError:
+        #             pass
+
+        # self.on_saved()
+
+        # self.accept()

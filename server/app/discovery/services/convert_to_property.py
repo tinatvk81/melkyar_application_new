@@ -24,11 +24,15 @@ def build_property_from_listing(listing: DiscoveredListing, db: Session, owner_a
             details["deposit"] = listing.deposit
             details["monthly_rent"] = listing.monthly_rent
         elif listing.deposit:
-            # اجاره بدون اجاره‌ماهانه = رهن کامل
             deal_type = DealType.mortgage
             details["deposit_full"] = listing.deposit
 
+    attrs = listing.attributes or {}
     note_lines = [f"وارد شده از ملک‌یاب — منبع: {listing.source}", listing.title or "", listing.url or ""]
+    desc = (attrs.get("description") or "").strip()
+    if desc:
+        note_lines.append("— توضیحات آگهی —")
+        note_lines.append(desc[:800])
 
     return Property(
         deal_type=deal_type,
@@ -37,6 +41,8 @@ def build_property_from_listing(listing: DiscoveredListing, db: Session, owner_a
         address=listing.raw_address,
         area_m2=listing.area_m2,
         rooms=listing.rooms,
+        build_year=attrs.get("build_year"),
+        amenities=attrs.get("amenities") or None,
         details=details,
         notes="\n".join(line for line in note_lines if line),
         owner_agent_id=owner_agent_id,
