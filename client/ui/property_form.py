@@ -95,7 +95,9 @@ class PropertyFormDialog(QDialog):
             lambda _: self.geo_district.set_for_city(self.geo_city.get_city()))
         self.address_input = QLineEdit()
         common_form.addRow("آدرس:", self.address_input)
-
+        self.listing_date_input = JalaliDateEdit(allow_empty=True)
+        self.listing_date_input.setToolTip("تاریخ انتشار آگهی منبع (خودکار از ملک‌یاب پر می‌شود)")
+        common_form.addRow("تاریخ آگهی:", self.listing_date_input)
         self.area_input = PersianDoubleSpinBox(suffix=" متر مربع")
         self.area_input.setRange(0, 100000) 
         common_form.addRow("متراژ:", self.area_input)
@@ -292,6 +294,11 @@ class PropertyFormDialog(QDialog):
         self._set_source_link(d.get("url"))
         dist = d.get("district") or ""
         self.address_input.setText((dist + "، " + addr) if (dist and addr and dist not in addr) else (addr or dist))
+        if d.get("posted_at"):
+            try:
+                self.listing_date_input.set_gregorian_date(date.fromisoformat(d["posted_at"][:10]))
+            except Exception:
+                pass
         by = d.get("build_year")
         if by and int(by) > 1300:
             self.build_year_input.setValue(int(by))
@@ -335,7 +342,15 @@ class PropertyFormDialog(QDialog):
         self.owner_name_input.setText(p.get("owner_name") or "")
         self.owner_phone_input.setText(p.get("owner_phone") or "")
         self.notes_input.setPlainText(p.get("notes") or "")
-
+        import re as _re
+        m = _re.search(r"https?://(?:divar\.ir|www\.sheypoor\.com)/\S+", p.get("notes") or "")
+        if m:
+            self._set_source_link(m.group(0))
+        if p.get("created_at"):
+            try:
+                self.listing_date_input.set_gregorian_date(date.fromisoformat(p["created_at"][:10]))
+            except Exception:
+                pass
         details = p.get("details") or {}
         if p["deal_type"] == "sale":
             self.price_input.set_value(details.get("price"))

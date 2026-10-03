@@ -448,6 +448,15 @@ class DiscoveryTab(QWidget):
             ab.setToolTip("افزودن سریع همین آگهی به فایل‌ها (بدون فرم)")
             ab.clicked.connect(lambda _=False, x=it: self._quick_add_one(x))
             ah.addWidget(ab)
+
+            lk = QPushButton("🔗")
+            lk.setObjectName("chip")
+            lk.setFixedWidth(60)
+            lk.setToolTip("باز کردن آگهی در دیوار/شیپور — گرفتن شمارهٔ تماس")
+            lk.clicked.connect(lambda _=False, x=it: webbrowser.open(x.get("url") or "https://divar.ir"))
+            ah.addWidget(lk)
+
+            
             bx = QPushButton("🚫 نادیده")
             bx.setObjectName("chip")
             bx.setToolTip("این آگهی از لیست حذف می‌شود")
@@ -576,11 +585,15 @@ class DiscoveryTab(QWidget):
     def _prefill_from(it: dict) -> dict:
         attrs = it.get("attributes") or {}
         note_lines = [f"وارد شده از ملک‌یاب — منبع: {it.get('source')}", it.get("title") or ""]
+        if it.get("posted_at"):
+            note_lines.append(f"تاریخ آگهی: {it.get('posted_at')[:10]}")
         desc = (attrs.get("description") or "").strip()
         if desc:
             note_lines.append("— توضیحات آگهی —")
-            note_lines.append(desc)   # کامل — بدون محدودیت
+            note_lines.append(desc)   # کامل — بدون محدودیتظ
+
         return {
+            "posted_at": it.get("posted_at"),
             "deal_type": it.get("deal_type") or "sale",
             "city": it.get("city"),
             "district": it.get("raw_address"),
