@@ -231,12 +231,13 @@ class ListingDetailDialog(QDialog):
         box.setWindowTitle("یادآوری: شمارهٔ تماس")
         box.setIcon(QMessageBox.Warning)
         box.setText(PHONE_WARN)
-        b_open = box.addButton("🔗 باز کردن دیوار اول", QMessageBox.AcceptRole)
+        b_open = box.addButton("🔗 باز کردن دیوار برای گرفتن شماره", QMessageBox.AcceptRole)
         b_go = box.addButton("➕ همان‌جا ادامهٔ افزودن", QMessageBox.ActionRole)
         box.addButton("انصراف", QMessageBox.RejectRole)
         box.exec()
         if box.clickedButton() is b_open:
             webbrowser.open(self.item.get("url") or "https://divar.ir")
+            Toast.show("شماره را برداشت؟ برگرد و «افزودن با فرم» را بزن — فرم باز است")
             return   # دیالوگ باز می‌ماند تا شماره را برداشتی، بعد «افزودن با فرم» را بزنی
         if box.clickedButton() is b_go:
             self.accept()
@@ -562,7 +563,7 @@ class DiscoveryTab(QWidget):
         desc = (attrs.get("description") or "").strip()
         if desc:
             note_lines.append("— توضیحات آگهی —")
-            note_lines.append(desc[:600])
+            note_lines.append(desc)   # کامل — بدون محدودیت
         return {
             "deal_type": it.get("deal_type") or "sale",
             "city": it.get("city"),
@@ -575,6 +576,8 @@ class DiscoveryTab(QWidget):
             "build_year": attrs.get("build_year"),
             "amenities": attrs.get("amenities") or [],
             "source_note": "\n".join(x for x in note_lines if x),
+            "address_full": it.get("raw_address"),
+            "url": it.get("url"),
             "listing_id": it.get("id"),
         }
 

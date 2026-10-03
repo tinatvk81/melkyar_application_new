@@ -130,7 +130,11 @@ class PropertyFormDialog(QDialog):
         self.location_input = QLineEdit()
         self.location_input.setPlaceholderText("لینک مکان از گوگل‌مپس (اختیاری) — https://maps.app.goo.gl/…")
         common_form.addRow("لینک نقشه:", self.location_input)
-
+        self.open_listing_btn = QPushButton("🔗 باز کردن آگهی اصلی در مرورگر")
+        self.open_listing_btn.setObjectName("chip")
+        self.open_listing_btn.setVisible(False)
+        self.open_listing_btn.clicked.connect(self._open_source_listing)
+        common_form.addRow("", self.open_listing_btn)
         checks_row.addWidget(self.elevator_check)
         checks_row.addWidget(self.parking_check)
         checks_widget = QWidget()
@@ -249,6 +253,16 @@ class PropertyFormDialog(QDialog):
         else:
             self.price_per_m2_label.setText("—")
 
+
+    def _open_source_listing(self):
+        import webbrowser
+        if getattr(self, "_prefill_url", None):
+            webbrowser.open(self._prefill_url)
+
+    def _set_source_link(self, url: str | None):
+        self._prefill_url = url
+        self.open_listing_btn.setVisible(bool(url))
+
     # ---------------------------------------------------------- Fill / Save
     def _apply_prefill(self, d: dict):
         """پرکردن فرم فایل جدید از روی یک آگهی ملک‌یاب — مشاور چک/تکمیل می‌کند و ذخیره."""
@@ -268,8 +282,23 @@ class PropertyFormDialog(QDialog):
             pass
         self.area_input.setValue(d.get("area_m2") or 0)
         self.rooms_input.setValue(d.get("rooms") or 0)
-        self.build_year_input.setValue(d.get("build_year") or 0)
+        addr = d.get("address") or ""
+        self._set_source_link(d.get("url"))
+        dist = d.get("district") or ""
+        self.address_input.setText((dist + "، " + addr) if (dist and addr and dist not in addr) else (addr or dist))
+        by = d.get("build_year")
+        if by and int(by) > 1300:
+            self.build_year_input.setValue(int(by))
+        else:
+            self.build_year_input.setValue(self.build_year_input.minimum())
+            self.build_year_input.setSpecialValueText(" ")   # خالی نمایش داده شود
         self.extra_amenities.set_tags(d.get("amenities") or [])
+
+        # دکمهٔ باز کردن آگهی + یادداشت آدرس
+        from ui.toast import Toast as _T
+        self._prefill_url = d.get("url")
+        if self._prefill_url:
+            _set_source_link(d.get("url"))
 
         if deal_type == "sale":
             self.price_input.set_value(d.get("price"))

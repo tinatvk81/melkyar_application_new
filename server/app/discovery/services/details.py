@@ -96,6 +96,13 @@ def enrich_from_payload(listing, payload: dict) -> None:
 
     kw_hits = extract_amenities(description, listing.title or "", listing.raw_address or "")
     amenities = sorted(set(features) | set(kw_hits))
+
+    for title, value in rows:
+    if value and value.strip() in ("دارد", "✅", "بله"):
+        if title and title not in amenities:
+            amenities.append(title)
+
+
     if amenities:
         attrs["amenities"] = amenities
     if description:
