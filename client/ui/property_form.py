@@ -261,12 +261,15 @@ class PropertyFormDialog(QDialog):
 
         city = d.get("city") or DEFAULT_CITY
         self.geo_city.set_city(city)
-        self.geo_district.set_value(d.get("district") or "", city)
+        try:
+            self.geo_district.set_value(d.get("district") or "", city)
+        except Exception:
+            pass
         self.area_input.setValue(d.get("area_m2") or 0)
         self.rooms_input.setValue(d.get("rooms") or 0)
         self.build_year_input.setValue(d.get("build_year") or 0)
         self.extra_amenities.set_tags(d.get("amenities") or [])
-        
+
         if deal_type == "sale":
             self.price_input.set_value(d.get("price"))
         elif deal_type == "rent":

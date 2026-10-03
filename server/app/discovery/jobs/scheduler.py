@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+from sqlalchemy import or_
 from app.db.session import SessionLocal
 from app.discovery.adapters.divar import DivarAdapter
 from app.discovery.adapters.sheypoor import SheypoorAdapter
@@ -53,7 +54,7 @@ def run_one_source(adapter, db):
         done = 0
         for src, ext in new_keys:
             if done >= DETAILS_PER_CYCLE:
-                logger.info(f"[{src}] سقف جزئیات این چرخه پر شد — بقیه چرخه‌های بعد")
+                logger.info(f"[{src}] سقف جزئیات این چرخه پر شد")
                 break
             row = db.query(DiscoveredListing).filter_by(source=src, external_id=ext).first()
             if row and _enrich_one(db, row):
@@ -64,13 +65,15 @@ def run_one_source(adapter, db):
         logger.exception(f"[{adapter.source_name}] خطا — منبع رد شد")
 
 
-def backfill_details(limit=200):
-    """برای آگهی‌های قدیمیِ بدون جزئیات — از کنسول: backfill_details(300)"""
+def backfill_details(limit=300):
+    """آگهی‌هایی که هنوز جزئیات نگرفته‌اند (has_details در attributes نیست)."""
     db = SessionLocal()
     try:
         rows = (db.query(DiscoveredListing)
-                .filter(DiscoveredListing.attributes.is_(None))
-                .order_by(DiscoveredListing.posted_at.desc()).limit(limit).all())
+                .filter(or_(DiscoveredListing.attributes.is_(None),
+                            ~DiscoveredListing.attributes.has_key("has_details")))
+                .order_by(DiscoveredListing.posted_at.desc())
+                .limit(limit).all())
         ok = 0
         for r in rows:
             if _enrich_one(db, r):
