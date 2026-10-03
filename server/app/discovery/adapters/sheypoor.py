@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 BASE = "https://api.majidapi.ir/sheypoor"
 CITY_ID = "444"              # مشهد
 REAL_ESTATE_ROOT = 43603
-RATE_SLEEP = 6
+RATE_SLEEP = 12
 _MAX_PAGES = 3
 _PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
 
@@ -32,6 +32,10 @@ def _api(**params) -> dict | None:
     params["token"] = tok
     try:
         r = requests.get(BASE, params=params, timeout=25)
+        if r.status_code == 429:
+            logger.warning("[sheypoor] 429 — 30 ثانیه صبر و تلاش مجدد")
+            time.sleep(30)
+            r = requests.get(BASE, params=params, timeout=25)
         r.raise_for_status()
         return r.json()
     except Exception:
