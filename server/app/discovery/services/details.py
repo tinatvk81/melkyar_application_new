@@ -37,12 +37,16 @@ def fetch_details(token: str) -> dict | None:
         r2 = requests.get(WEB_URL.format(token=token), headers=HEADERS, timeout=15)
         if r2.status_code != 200:
             return None
-        m = re.search(r"window\.__PRELOADED_STATE__\s*=\s*(\{.*?\});", r2.text, re.DOTALL)
+        m = re.search(r"__PRELOADED_STATE__\s*=\s*(\{.+?\})\s*;\s*\n", r2.text, re.DOTALL) or re.search(r"__PRELOADED_STATE__\s*=\s*(\{.*)", r2.text)
         if not m:
-            logger.warning(f"[details] PRELOADED_STATE یافت نشد {token}")
             return None
         import json as _json
-        state = _json.loads(m.group(1))
+        try:
+            state = _json.loads(m.group(1))
+        except Exception:
+            # برش تا آخرین } معتبر — دیوار JSON را با اسکریپت‌های بعدی قاطی می‌کند
+            s = m.group(1)
+            state = _json.loads(s[:s.rfind('}')+1])
         post = (state.get("post") or {}).get("post") or {}
         if not post:
             return None
